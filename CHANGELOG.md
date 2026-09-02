@@ -9,7 +9,7 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
-## [1.0.0] – 2026-09-01
+## [1.0.0] – 2026-09-02
 
 Erste öffentliche Veröffentlichung. Die Bild-Toolbox vereint die früheren
 Einzelprogramme *Bildbetrachter Pro 2.0*, *Icon Extraktor*,
