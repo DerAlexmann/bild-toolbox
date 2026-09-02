@@ -1,0 +1,59 @@
+# --------------------------------------------------------------------------
+# Von der Bild-Toolbox selbst erzeugte Dateien
+# --------------------------------------------------------------------------
+bild-toolbox.json
+bild-toolbox_fehler.log
+.bild-toolbox-schreibtest
+
+# --------------------------------------------------------------------------
+# Python
+# --------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.spec
+
+# Virtuelle Umgebungen
+.venv/
+venv/
+env/
+ENV/
+
+# Test- und Linter-Caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --------------------------------------------------------------------------
+# Editoren / IDEs
+# --------------------------------------------------------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*~
+
+# --------------------------------------------------------------------------
+# Betriebssysteme
+# --------------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# --------------------------------------------------------------------------
+# Lokale Arbeitsnotizen zur Veroeffentlichung - gehoeren nicht ins Repository
+# --------------------------------------------------------------------------
+_VEROEFFENTLICHEN.md

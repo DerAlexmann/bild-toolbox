@@ -1,0 +1,42 @@
+name: Übersetzung / Translation
+description: Eine neue Sprache oder eine Korrektur an einer bestehenden Übersetzung.
+title: "[Sprache]: "
+labels: ["übersetzung"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Die Sprachtabelle steht am Ende von `Bild-Toolbox.pyw`. Quellsprache ist
+        Deutsch – der deutsche Text im Code ist zugleich der Schlüssel.
+        Nicht übersetzte Zeilen erscheinen automatisch auf Deutsch, eine
+        unvollständige Tabelle ist also völlig in Ordnung.
+
+  - type: input
+    id: sprache
+    attributes:
+      label: Sprache
+      placeholder: "Französisch (fr)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: art
+    attributes:
+      label: Worum geht es?
+      options:
+        - Neue Sprache
+        - Korrektur an einer bestehenden Übersetzung
+        - Fehlende Zeilen ergänzen
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: >
+        Bei einer Korrektur bitte den deutschen Quelltext und die vorgeschlagene
+        Fassung angeben. Platzhalter in geschweiften Klammern – {count}, {path},
+        {error} … – müssen unverändert erhalten bleiben.
+    validations:
+      required: true

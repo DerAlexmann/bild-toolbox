@@ -1,0 +1,96 @@
+name: Release
+
+# Baut bei einem Versions-Tag (z. B. v1.0.0) eine Windows-EXE und ein
+# plattformunabhaengiges ZIP und haengt beides an einen GitHub-Release.
+#
+# Die EXE entsteht im --onefile-Modus. Damit Sprache und Farbschema einen
+# Neustart ueberleben, erkennt app_folder() in Bild-Toolbox.pyw den gepackten
+# Zustand (sys.frozen) und legt die Einstellungen neben der EXE ab statt in
+# dem temporaeren Entpackordner, den PyInstaller bei jedem Start anlegt.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  quellpaket:
+    name: Quellpaket (ZIP)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ZIP packen
+        run: |
+          mkdir -p out/Bild-Toolbox
+          cp Bild-Toolbox.pyw README.md README.en.md LICENSE NOTICE CHANGELOG.md \
+             requirements.txt requirements-optional.txt out/Bild-Toolbox/
+          cd out && zip -r "Bild-Toolbox-${GITHUB_REF_NAME}-quellen.zip" Bild-Toolbox
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quellpaket
+          path: out/*.zip
+
+  windows-exe:
+    name: Windows-EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Abhaengigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-optional.txt pyinstaller
+
+      # --collect-all pillow_heif ist eine Absicherung: Bild-Toolbox.pyw laedt
+      # pillow-heif inzwischen mit einer gewoehnlichen import-Zeile, damit
+      # PyInstaller es findet. Wuerde jemand das spaeter auf einen dynamischen
+      # Import zurueckbauen, faenge dieses Flag den Fehler trotzdem ab - sonst
+      # meldete die EXE stillschweigend "keine HEIC/HEIF-Unterstuetzung".
+      - name: EXE bauen
+        run: >
+          pyinstaller --noconfirm --onefile --windowed
+          --name "Bild-Toolbox"
+          --collect-all pillow_heif
+          Bild-Toolbox.pyw
+
+      - name: Startet die EXE ueberhaupt?
+        # Ein reiner Rauchtest: die EXE wird gestartet und nach wenigen
+        # Sekunden beendet. Faellt sie sofort um, schlaegt der Job fehl.
+        run: |
+          $p = Start-Process -FilePath "dist\Bild-Toolbox.exe" -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { throw "Die EXE hat sich sofort beendet (Exit $($p.ExitCode))." }
+          Stop-Process -Id $p.Id -Force
+          Write-Output "EXE laeuft."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/Bild-Toolbox.exe
+
+  release:
+    name: Release veroeffentlichen
+    needs: [quellpaket, windows-exe]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefakte
+
+      - name: Release anlegen
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true          # erst pruefen, dann von Hand veroeffentlichen
+          generate_release_notes: true
+          files: |
+            artefakte/quellpaket/*.zip
+            artefakte/windows-exe/Bild-Toolbox.exe

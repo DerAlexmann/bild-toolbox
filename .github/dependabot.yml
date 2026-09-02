@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # Python-Abhaengigkeiten in den requirements-Dateien
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels: ["abhängigkeiten"]
+
+  # Versionen der GitHub-Actions in den Workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels: ["ci"]

@@ -1,0 +1,45 @@
+name: Funktionswunsch / Feature request
+description: Ein Vorschlag für eine neue Funktion oder Verbesserung.
+title: "[Wunsch]: "
+labels: ["idee"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem soll gelöst werden?
+      description: Bitte die Situation beschreiben, nicht nur die gewünschte Lösung.
+    validations:
+      required: true
+
+  - type: textarea
+    id: loesung
+    attributes:
+      label: Wie könnte die Lösung aussehen?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bereich
+    attributes:
+      label: Betroffener Bereich
+      options:
+        - Ein bestehendes Modul
+        - Ein neues Modul
+        - Oberfläche / Bedienung
+        - Sprache oder Übersetzung
+        - Farbschema
+        - Sonstiges
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativen
+    attributes:
+      label: Haben Sie Alternativen erwogen?
+
+  - type: checkboxes
+    id: mitarbeit
+    attributes:
+      label: Mitarbeit
+      options:
+        - label: Ich würde das gerne selbst umsetzen und einen Pull Request stellen.

@@ -1,0 +1,95 @@
+name: Fehlerbericht / Bug report
+description: Etwas funktioniert nicht wie erwartet.
+title: "[Fehler]: "
+labels: ["fehler"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für die Meldung! Bitte so viel wie möglich ausfüllen – je genauer,
+        desto schneller lässt sich der Fehler nachstellen.
+
+        *Thanks for reporting. German or English are both fine.*
+
+  - type: checkboxes
+    id: vorab
+    attributes:
+      label: Vorab
+      options:
+        - label: Ich habe geprüft, ob es dazu schon ein offenes Issue gibt.
+          required: true
+        - label: Ich benutze die aktuelle Version aus dem Repository.
+          required: true
+
+  - type: dropdown
+    id: modul
+    attributes:
+      label: Betroffenes Modul
+      options:
+        - Startseite
+        - Bild-Vergleich
+        - Duplikat-Finder
+        - Ähnliche Bilder
+        - Dimensions-Filter
+        - Batch-Umbenennung
+        - Statistiken
+        - Format-Konverter
+        - Icon-Extraktor
+        - Info & Hilfe
+        - Sprache / Farbschema
+        - Weiß ich nicht / betrifft alles
+    validations:
+      required: true
+
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: Was passiert?
+      description: Was ist schiefgegangen – und was hätten Sie stattdessen erwartet?
+    validations:
+      required: true
+
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte zum Nachstellen
+      placeholder: |
+        1. Modul "Duplikat-Finder" öffnen
+        2. Ordner X auswählen
+        3. Auf "Suche starten" klicken
+        4. Fehler erscheint
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Inhalt von bild-toolbox_fehler.log
+      description: >
+        Die Datei liegt neben dem Skript und wird nur bei einem echten Fehler
+        angelegt. Bitte vorher persönliche Pfade entfernen, falls nötig.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Version der Bild-Toolbox
+      placeholder: "1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: Betriebssystem und Python-Version
+      placeholder: "Windows 11, Python 3.12.4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: pakete
+    attributes:
+      label: Installierte Zusatzmodule
+      description: >
+        Der Reiter „Info & Hilfe" zeigt an, welche Bibliotheken installiert
+        sind. Alternativ die Ausgabe von `pip list` einfügen.

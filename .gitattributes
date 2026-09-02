@@ -1,0 +1,26 @@
+# Zeilenenden im Repository normalisieren, im Arbeitsverzeichnis
+# plattformueblich auschecken.
+* text=auto eol=lf
+
+*.pyw   text diff=python
+*.py    text diff=python
+*.md    text
+*.yml   text
+*.yaml  text
+*.txt   text
+*.toml  text
+
+# Windows-Skripte brauchen CRLF
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binaerdateien nie anfassen
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.exe   binary
+*.dll   binary
