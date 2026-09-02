@@ -4,4 +4,4 @@
 
 send2trash>=1.8      # Loeschen in den Papierkorb statt endgueltig
 icoextract>=0.1.4    # Icons aus EXE- und DLL-Dateien lesen
-pillow-heif>=0.13    # HEIC- und HEIF-Dateien oeffnen (AVIF bringt Pillow ab 11.3 selbst mit)
+pillow-heif>=1.5.0    # HEIC- und HEIF-Dateien oeffnen (AVIF bringt Pillow ab 11.3 selbst mit)
