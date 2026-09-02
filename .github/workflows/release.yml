@@ -30,7 +30,7 @@ jobs:
              requirements.txt requirements-optional.txt out/Bild-Toolbox/
           cd out && zip -r "Bild-Toolbox-${GITHUB_REF_NAME}-quellen.zip" Bild-Toolbox
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: quellpaket
           path: out/*.zip
@@ -72,7 +72,7 @@ jobs:
           Stop-Process -Id $p.Id -Force
           Write-Output "EXE laeuft."
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-exe
           path: dist/Bild-Toolbox.exe
