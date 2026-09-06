@@ -52,8 +52,3 @@ $RECYCLE.BIN/
 .DS_Store
 .Spotlight-V100
 .Trashes
-
-# --------------------------------------------------------------------------
-# Lokale Arbeitsnotizen zur Veroeffentlichung - gehoeren nicht ins Repository
-# --------------------------------------------------------------------------
-_VEROEFFENTLICHEN.md
