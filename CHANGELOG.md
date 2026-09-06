@@ -7,6 +7,10 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 ## [Unveröffentlicht]
 
+<!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
+
+## [1.0.1] – 2026-09-07
+
 ### Behoben
 
 - **Bild-Vergleich: Fenster und Rahmen verschoben sich, die Statusleiste
@@ -68,5 +72,6 @@ Einzelprogramme *Bildbetrachter Pro 2.0*, *Icon Extraktor*,
   `pillow-heif` wird mit einer gewöhnlichen `import`-Zeile geladen, damit
   PyInstaller es beim Packen findet
 
-[Unveröffentlicht]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.0...HEAD
+[Unveröffentlicht]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DerAlexmann/bild-toolbox/releases/tag/v1.0.0
