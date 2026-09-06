@@ -783,8 +783,9 @@ class CompareModule(Module):
         self.images = {"left": None, "right": None}
         self.photos = {"left": None, "right": None}
         self.labels = {}
+        self.holders = {}
         self.infos = {}
-        self._resize_job = None
+        self._resize_jobs = {"left": None, "right": None}
         self.use_trash = tk.BooleanVar(value=HAS_TRASH)
 
         bar = make_card(self.body, fill="x")
@@ -816,10 +817,23 @@ class CompareModule(Module):
 
         tk.Label(pane, text=_(caption), font=FONT_BOLD, bg=CARD, fg=TEXT).pack(pady=(10, 6))
 
-        canvas = tk.Label(pane, bg=VIEWER_BG, text=_("Kein Bild geladen"),
+        # Ein tk.Label fordert immer so viel Platz an, wie sein Bild gross ist.
+        # Diese Anforderung wandert sonst nach oben durch pane -> panes ->
+        # content -> outer. Da outer vor der Statusleiste gepackt ist und
+        # expand=True hat, quetscht ein grosses Bild die Statusleiste aus dem
+        # Fenster - beim Tauschen schaukelte sich das mit jedem Wechsel weiter
+        # auf. Der Halterahmen mit pack_propagate(False) sperrt die Anforderung
+        # ein: Er behaelt die Groesse, die ihm das Gitter zuweist, egal was
+        # darin liegt.
+        holder = tk.Frame(pane, bg=VIEWER_BG, width=200, height=200)
+        holder.pack(fill="both", expand=True, padx=12)
+        holder.pack_propagate(False)
+        holder.bind("<Configure>", lambda _e, s=side: self._schedule_fit(s))
+        self.holders[side] = holder
+
+        canvas = tk.Label(holder, bg=VIEWER_BG, text=_("Kein Bild geladen"),
                           fg=VIEWER_TEXT, font=FONT_SMALL)
-        canvas.pack(fill="both", expand=True, padx=12)
-        canvas.bind("<Configure>", lambda _e, s=side: self._schedule_fit(s))
+        canvas.pack(fill="both", expand=True)
         canvas.bind("<Double-Button-1>", lambda _e, s=side: self.open(s))
         self.labels[side] = canvas
 
@@ -869,19 +883,36 @@ class CompareModule(Module):
                 _("Bild konnte nicht geladen werden:\n{error}").format(error=e))
 
     def _schedule_fit(self, side):
+        """Nachskalieren kurz aufschieben - je Seite ein eigener Auftrag.
+
+        Vorher teilten sich beide Seiten einen Auftrag: Meldete rechts eine
+        Groessenaenderung, wurde der noch offene Auftrag von links verworfen
+        und die linke Seite blieb unskaliert.
+        """
         if self.images[side] is None:
             return
-        if self._resize_job:
-            self.root.after_cancel(self._resize_job)
-        self._resize_job = self.root.after(150, lambda: self._fit(side))
+        job = self._resize_jobs.get(side)
+        if job is not None:
+            try:
+                self.root.after_cancel(job)
+            except Exception:
+                pass
+        self._resize_jobs[side] = self.root.after(150, lambda: self._fit(side))
 
     def _fit(self, side):
         image = self.images[side]
         label = self.labels[side]
+        holder = self.holders[side]
+        self._resize_jobs[side] = None
         if image is None:
             return
-        width = max(label.winfo_width() - 8, 100)
-        height = max(label.winfo_height() - 8, 100)
+        try:
+            # Der Halterahmen hat die verlaessliche Groesse: Das Label darin
+            # traegt die Groesse seines Bildes und wuerde sich selbst messen.
+            width = max(holder.winfo_width() - 8, 100)
+            height = max(holder.winfo_height() - 8, 100)
+        except tk.TclError:
+            return                          # Fenster wird gerade geschlossen
         try:
             thumb = image.copy()
             thumb.thumbnail((width, height), Image.Resampling.LANCZOS)
@@ -893,13 +924,29 @@ class CompareModule(Module):
 
     # ---------------------------------------------------------------- Aktionen
     def swap(self):
-        self.paths["left"], self.paths["right"] = self.paths["right"], self.paths["left"]
-        self.images["left"], self.images["right"] = self.images["right"], self.images["left"]
+        """Seiten tauschen.
+
+        Alles Noetige liegt bereits im Speicher, deshalb wird nichts neu von
+        der Platte gelesen. Frueher lief bei jedem Tausch ein vollstaendiges
+        load() - inklusive MD5 ueber die ganze Datei, was bei grossen Bildern
+        spuerbar hakte.
+        """
+        for feld in (self.paths, self.images, self.photos):
+            feld["left"], feld["right"] = feld["right"], feld["left"]
+
+        links, rechts = self.infos["left"], self.infos["right"]
+        text, farbe = links.cget("text"), links.cget("fg")
+        links.configure(text=rechts.cget("text"), fg=rechts.cget("fg"))
+        rechts.configure(text=text, fg=farbe)
+
         for side in ("left", "right"):
-            if self.paths[side]:
-                self.load(side, self.paths[side])
-            else:
+            if self.images[side] is None:
                 self.clear(side)
+            else:
+                self._fit(side)
+
+        if any(self.paths.values()):
+            self.status(_("Seiten getauscht."))
 
     def clear(self, side):
         self.paths[side] = None
@@ -3036,6 +3083,7 @@ TRANSLATIONS = {
     "en": {
         # --- Rahmen, Navigation, allgemeine Begriffe ----------------------
         "Start": "Home",
+        "Seiten getauscht.": "Sides swapped.",
         "Ansehen": "View",
         "Aufräumen": "Clean up",
         "Umwandeln": "Convert",

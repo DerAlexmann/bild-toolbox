@@ -7,7 +7,28 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 ## [Unveröffentlicht]
 
-<!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
+### Behoben
+
+- **Bild-Vergleich: Fenster und Rahmen verschoben sich, die Statusleiste
+  verschwand.** Ein `tk.Label` fordert immer so viel Platz an, wie sein Bild
+  groß ist. Diese Anforderung wanderte nach oben durch die Rahmen bis zum
+  Fenster; da der Inhaltsbereich vor der Statusleiste gepackt wird und
+  `expand=True` hat, quetschte ein großes Bild die Statusleiste heraus. Beim
+  wiederholten Tauschen wechselte das Seitenverhältnis und der Effekt
+  schaukelte sich auf. Die Bildfläche sitzt jetzt in einem Halterahmen mit
+  abgeschalteter Größenweitergabe, wodurch die Anforderung des Inhaltsbereichs
+  unabhängig von Bild und Tauschvorgängen konstant bleibt.
+- **Bild-Vergleich: Beim Ändern der Fenstergröße wurde nur eine Seite
+  nachskaliert.** Beide Seiten teilten sich einen Auftrag zum verzögerten
+  Nachskalieren; meldete die rechte Seite eine Größenänderung, verfiel der noch
+  offene Auftrag der linken. Jede Seite hat nun ihren eigenen.
+
+### Geändert
+
+- **Bild-Vergleich: Seiten tauschen geht sofort.** Der Tausch las bisher beide
+  Dateien neu von der Platte ein und berechnete die MD5-Prüfsumme erneut, was
+  bei großen Bildern spürbar hakte. Es liegt bereits alles im Speicher.
+  Die Statusleiste meldet den Tausch jetzt ausdrücklich.
 
 ## [1.0.0] – 2026-09-02
 
