@@ -678,6 +678,82 @@ def card_title(parent, text):
              anchor="w").pack(fill="x", padx=14, pady=(12, 6))
 
 
+class ScrollArea(tk.Frame):
+    """Senkrecht rollbarer Bereich fuer Seiten, die hoeher werden koennen als das Fenster.
+
+    Inhalte kommen in ``inner``. Solange alles passt, fuellt ``inner`` die
+    ganze Flaeche aus - Karten mit expand=True wachsen also wie gewohnt mit -
+    und der Rollbalken bleibt unsichtbar. Erst wenn der Platz nicht reicht,
+    erscheint er, und das Mausrad rollt die Seite.
+    """
+
+    WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+
+    def __init__(self, parent, bg):
+        super().__init__(parent, bg=bg)
+        self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0,
+                                yscrollincrement=20)
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical",
+                                       command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.inner = tk.Frame(self.canvas, bg=bg)
+        self._item = self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>", self._layout)
+        self.canvas.bind("<Configure>", self._layout)
+
+        # Eigene Bindemarke je Bereich: So rollt das Mausrad ueber jedem Widget
+        # der Seite, nicht nur ueber dem Rollbalken, ohne sich global an alle
+        # Fenster zu haengen.
+        self._wheel_tag = f"ScrollArea{id(self)}"
+        for sequence in self.WHEEL_EVENTS:
+            self.bind_class(self._wheel_tag, sequence, self._on_wheel)
+
+    def _layout(self, _event=None):
+        width = self.canvas.winfo_width()
+        visible = self.canvas.winfo_height()
+        needed = self.inner.winfo_reqheight()
+        height = max(needed, visible)
+        self.canvas.itemconfigure(self._item, width=width, height=height)
+        self.canvas.configure(scrollregion=(0, 0, width, height))
+        if needed > visible:
+            if not self.scrollbar.winfo_manager():
+                self.scrollbar.pack(side="right", fill="y", padx=(6, 0),
+                                    before=self.canvas)
+        elif self.scrollbar.winfo_manager():
+            self.scrollbar.pack_forget()
+            self.canvas.yview_moveto(0)
+
+    def bind_wheel(self):
+        """Mausrad fuer alle Widgets im Bereich einschalten - nach dem Aufbau aufrufen."""
+        pending = [self]
+        while pending:
+            widget = pending.pop()
+            tags = widget.bindtags()
+            if self._wheel_tag not in tags:
+                widget.bindtags((self._wheel_tag, *tags))
+            pending.extend(widget.winfo_children())
+
+    def _on_wheel(self, event):
+        if not self.scrollbar.winfo_manager():          # passt alles, nichts zu rollen
+            return None
+        if event.num == 4 or event.delta > 0:
+            direction = -1
+        elif event.num == 5 or event.delta < 0:
+            direction = 1
+        else:
+            return None
+        # Windows meldet 120 je Raste, macOS kleinere Werte, Linux gar keine
+        steps = max(1, abs(event.delta) // 120)
+        self.canvas.yview_scroll(direction * steps * 3, "units")
+        return "break"
+
+    def destroy(self):
+        for sequence in self.WHEEL_EVENTS:
+            self.unbind_class(self._wheel_tag, sequence)
+        super().destroy()
+
+
 def path_row(parent, label, var, browse_cmd, button_text="Durchsuchen ..."):
     """Zeile: Beschriftung + Eingabefeld + Durchsuchen-Button."""
     row = tk.Frame(parent, bg=CARD)
@@ -2788,7 +2864,14 @@ class InfoModule(Module):
     description = "Kurzbeschreibung aller Module und Status der Zusatzbibliotheken."
 
     def build(self):
-        help_card = make_card(self.body, fill="x")
+        # In der kleinsten Fenstergroesse ist die Seite hoeher als der Platz
+        # darunter. Sie rollt deshalb als Ganzes - frueher wurde der Text unter
+        # "Ueber dieses Programm" unten einfach abgeschnitten.
+        area = ScrollArea(self.body, bg=BG)
+        area.pack(fill="both", expand=True)
+        page = area.inner
+
+        help_card = make_card(page, fill="x")
         card_title(help_card, _("Die Module im Überblick"))
         for cls in self.app.module_classes:
             if cls.key in ("home", "info"):
@@ -2803,7 +2886,7 @@ class InfoModule(Module):
                      anchor="w", justify="left").pack(side="left", fill="x", expand=True)
         tk.Frame(help_card, bg=CARD, height=8).pack()
 
-        deps_card = make_card(self.body, fill="x", pady=(10, 0))
+        deps_card = make_card(page, fill="x", pady=(10, 0))
         card_title(deps_card, _("Bibliotheken"))
         for name, installed, purpose, command in self.app.dependency_table():
             row = tk.Frame(deps_card, bg=CARD)
@@ -2818,7 +2901,7 @@ class InfoModule(Module):
                      fg=OK if installed else WARN, font=FONT_SMALL).pack(side="right")
         tk.Frame(deps_card, bg=CARD, height=8).pack()
 
-        about_card = make_card(self.body, fill="both", expand=True, pady=(10, 0))
+        about_card = make_card(page, fill="both", expand=True, pady=(10, 0))
         card_title(about_card, _("Über dieses Programm"))
         about = (f"{APP_NAME} {APP_VERSION}\n\n" +
                  _("Vereint die früheren Einzelprogramme Bildbetrachter Pro 2.0, "
@@ -2832,6 +2915,7 @@ class InfoModule(Module):
         tk.Label(about_card, text=about, bg=CARD, fg=TEXT, font=FONT_SMALL,
                  justify="left", anchor="nw", wraplength=900).pack(
             fill="both", expand=True, padx=14, pady=(0, 14))
+        area.bind_wheel()
 
 
 # --------------------------------------------------------------------------

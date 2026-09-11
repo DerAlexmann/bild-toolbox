@@ -9,6 +9,15 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+### Behoben
+
+- **Info & Hilfe: In der kleinsten Fenstergröße war der Text unter „Über
+  dieses Programm“ abgeschnitten.** Die Seite ist höher als der Platz, den sie
+  dort bekommt, und die letzte Karte ging leer aus. Die Seite rollt jetzt als
+  Ganzes: Der Rollbalken erscheint nur, wenn der Platz nicht reicht, und das
+  Mausrad funktioniert über der ganzen Seite. Bei größerem Fenster sieht sie
+  aus wie bisher.
+
 ## [1.0.2] – 2026-09-11
 
 ### Hinzugefügt
