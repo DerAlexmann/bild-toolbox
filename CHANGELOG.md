@@ -9,6 +9,18 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+### Behoben
+
+- **Seitenleiste und Statusleiste verstellten sich je nach Reiter.** Verlangte
+  ein Reiter mehr Höhe, als das Fenster hatte, bekam er sie zuerst, weil der
+  Inhaltsbereich vor der Statusleiste gepackt wurde. Im Icon-Extraktor
+  schrumpfte die Statusleiste dann auf wenige Pixel. In Duplikat-Finder,
+  Ähnliche Bilder und Batch-Umbenennung verschwand sie ganz, sobald das
+  Fenster niedriger als etwa 870 Pixel war. Die Seitenleiste wurde jeweils
+  länger. Seit das Fenster in der kleinsten Größe startet, fiel das sofort
+  auf. Die Statusleiste wird jetzt vor dem Inhalt gepackt und behält ihren
+  Platz in jedem Reiter und bei jeder Fenstergröße.
+
 ## [1.0.3] – 2026-09-11
 
 ### Behoben

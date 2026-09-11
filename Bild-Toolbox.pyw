@@ -3079,7 +3079,11 @@ class ToolboxApp:
 
         # --- Statusleiste ---
         status_bar = self.status_bar = tk.Frame(self.root, bg=STATUS_BG, height=26)
-        status_bar.pack(side="bottom", fill="x")
+        # Vor dem Inhaltsbereich packen: Wer zuerst gepackt wird, bekommt
+        # zuerst Platz. Verlangt ein Reiter mehr Hoehe, als das Fenster hat,
+        # draengte er sonst die Statusleiste hinaus und zog die Seitenleiste
+        # mit in die Laenge.
+        status_bar.pack(side="bottom", fill="x", before=outer)
         self.status_var = tk.StringVar(value=_("Bereit"))
         tk.Label(status_bar, textvariable=self.status_var, bg=STATUS_BG, fg=MUTED,
                  font=FONT_SMALL, anchor="w").pack(side="left", padx=14, pady=3)
