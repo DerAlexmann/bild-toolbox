@@ -64,6 +64,7 @@ Grober Aufbau der Datei von oben nach unten:
 | Konstanten | `APP_NAME`, `APP_VERSION`, Dateiendungen, Grenzwerte |
 | `THEMES` | Farbpaletten hell/dunkel |
 | Sprachumschaltung | `Translator`, Konfiguration lesen und schreiben |
+| Fensterlage | `window_placement()` – Startgröße aus dem gemessenen Platzbedarf, gemerkte Größe und Lage, Rückfall bei abgestecktem Monitor |
 | Hilfsfunktionen | `human_size`, `md5_of`, `average_hash`, `iter_images` … |
 | Bausteine der Oberfläche | `FlatButton`, `make_card`, `NavButton` … |
 | `Module` | Basisklasse, danach je ein Modul pro Werkzeug |

@@ -129,13 +129,20 @@ Das Programm legt neben dem Skript zwei Dateien an:
 
 | Datei | Inhalt |
 |---|---|
-| `bild-toolbox.json` | Gewählte Sprache und Farbschema |
+| `bild-toolbox.json` | Gewählte Sprache und Farbschema, Größe und Lage des Fensters |
 | `bild-toolbox_fehler.log` | Wird **nur** angelegt, wenn ein echter Fehler auftritt |
 
 Ist der Ordner nicht beschreibbar, weichen beide Dateien auf das
 Benutzerverzeichnis aus. In einer mit PyInstaller gebauten EXE liegen sie neben
-der EXE, damit Sprache und Farbschema einen Neustart überleben. Beide Dateien
+der EXE, damit die Einstellungen einen Neustart überleben. Beide Dateien
 sind in `.gitignore` eingetragen.
+
+Beim ersten Start öffnet sich das Fenster mittig auf dem Hauptbildschirm, und
+zwar in der kleinsten Größe, in der Navigation, Sprachauswahl und Startseite
+vollständig Platz haben. Verschieben, vergrößern oder maximieren Sie es, merkt
+sich das Programm das für den nächsten Start. Liegt die gemerkte Stelle auf
+keinem angeschlossenen Bildschirm mehr, etwa nach dem Abstecken eines zweiten
+Monitors, startet das Fenster wieder mittig.
 
 ---
 

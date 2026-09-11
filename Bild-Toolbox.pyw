@@ -24,6 +24,7 @@ import logging
 import os
 import platform
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -376,6 +377,111 @@ def startup_theme():
     """Gespeichertes Farbschema, sonst das helle."""
     stored = load_config().get("theme")
     return stored if stored in THEMES else DEFAULT_THEME
+
+
+# --------------------------------------------------------------------------
+# Fenstergroesse und -lage
+# --------------------------------------------------------------------------
+
+# Titelleiste und Rahmen, die das Betriebssystem um den Inhalt legt - grob
+# geschaetzt. Tk zaehlt sie bei der Fenstergroesse nicht mit, bei der Lage
+# aber schon.
+WINDOW_FRAME = (16, 40)
+
+_GEOMETRY_RE = re.compile(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$")
+
+
+def parse_geometry(text):
+    """Tk-Geometrie wie '1200x700+100+50' in ein Woerterbuch zerlegen."""
+    match = _GEOMETRY_RE.match(text or "")
+    if not match:
+        return None
+    width, height, x, y = (int(value) for value in match.groups())
+    return {"x": x, "y": y, "width": width, "height": height}
+
+
+def window_from_config(settings):
+    """Gespeicherte Fensterlage pruefen - None, wenn nichts Brauchbares da ist."""
+    window = settings.get("window") if isinstance(settings, dict) else None
+    if not isinstance(window, dict):
+        return None
+    try:
+        values = {key: int(window[key]) for key in ("x", "y", "width", "height")}
+    except (KeyError, TypeError, ValueError):
+        return None
+    if values["width"] <= 0 or values["height"] <= 0:
+        return None
+    values["maximized"] = window.get("maximized") is True
+    return values
+
+
+def window_placement(natural, area, saved=None, on_screen=None):
+    """Groesse, Lage und Mindestgroesse des Hauptfensters beim Start.
+
+    natural   -- Platzbedarf der Oberflaeche als (Breite, Hoehe)
+    area      -- nutzbare Flaeche des Hauptbildschirms als (x, y, Breite, Hoehe)
+    saved     -- gespeicherte Lage aus window_from_config() oder None
+    on_screen -- prueft, ob ein Punkt (x, y) auf einem angeschlossenen
+                 Bildschirm liegt; None heisst: nicht pruefen
+
+    Ohne gespeicherte Lage startet das Fenster in der kleinsten Groesse, die
+    alles zeigt, mittig auf dem Hauptbildschirm. Eine gespeicherte Lage wird
+    uebernommen, solange die Titelleiste auf einem Bildschirm liegt - sonst,
+    etwa nach dem Abstecken eines zweiten Monitors, wird das Fenster wieder
+    zentriert. Kleiner als der Platzbedarf wird es nie, und groesser als der
+    Bildschirm nur, wenn der Nutzer es selbst so aufgezogen hat.
+
+    Liefert (breite, hoehe, x, y, min_breite, min_hoehe).
+    """
+    area_x, area_y, area_w, area_h = area
+    frame_w, frame_h = WINDOW_FRAME
+    max_w, max_h = max(area_w - frame_w, 1), max(area_h - frame_h, 1)
+    min_w, min_h = min(natural[0], max_w), min(natural[1], max_h)
+
+    if saved:
+        width, height = max(saved["width"], min_w), max(saved["height"], min_h)
+        # Probepunkt mitten in der Titelleiste - dort greift man das Fenster
+        if on_screen is None or on_screen(saved["x"] + width // 2, saved["y"] + 10):
+            return width, height, saved["x"], saved["y"], min_w, min_h
+    else:
+        width, height = natural
+    width, height = min(width, max_w), min(height, max_h)
+    x = area_x + (area_w - width - frame_w) // 2
+    y = area_y + (area_h - height - frame_h) // 2
+    return width, height, x, y, min_w, min_h
+
+
+def work_area(root):
+    """Nutzbare Flaeche des Hauptbildschirms ohne Taskleiste: (x, y, Breite, Hoehe)."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            rect = wintypes.RECT()
+            spi_getworkarea = 0x0030
+            if ctypes.windll.user32.SystemParametersInfoW(
+                    spi_getworkarea, 0, ctypes.byref(rect), 0):
+                return (rect.left, rect.top,
+                        rect.right - rect.left, rect.bottom - rect.top)
+        except Exception:
+            pass
+    return 0, 0, root.winfo_screenwidth(), root.winfo_screenheight()
+
+
+def point_on_screen(root, x, y):
+    """Liegt der Punkt auf einem der angeschlossenen Bildschirme?"""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            user32.MonitorFromPoint.restype = wintypes.HMONITOR
+            monitor_defaulttonull = 0
+            return bool(user32.MonitorFromPoint(wintypes.POINT(x, y),
+                                                monitor_defaulttonull))
+        except Exception:
+            pass
+    return 0 <= x < root.winfo_screenwidth() and 0 <= y < root.winfo_screenheight()
 
 
 # --------------------------------------------------------------------------
@@ -2740,14 +2846,17 @@ class ToolboxApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"{APP_NAME} {APP_VERSION}")
-        self.root.geometry("1400x900")
-        self.root.minsize(1080, 700)
+        # Unsichtbar aufbauen - gezeigt wird erst, wenn Groesse und Lage feststehen
+        self.root.withdraw()
 
         self.pages = {}          # key -> (page_frame, module_instance oder None)
         self.nav_buttons = {}
         self.current = None
         self.event_queue = queue.Queue()
         self._pump_job = None
+        self._window = None          # aktuelle normale Lage, siehe _remember_window
+        self._window_saved = None    # zuletzt in die Einstellungen geschrieben
+        self._window_job = None
 
         # Sprache und Farbschema stehen fest, bevor das erste Widget entsteht
         _.language = startup_language()
@@ -2757,6 +2866,7 @@ class ToolboxApp:
         self._setup_style()
         self._build_layout()
         self.show("home")
+        self._place_window()
         self._bind_keys()
         self._pump()
         self.root.protocol("WM_DELETE_WINDOW", self.close)
@@ -2812,7 +2922,7 @@ class ToolboxApp:
         outer.pack(fill="both", expand=True)
 
         # --- Sidebar ---
-        sidebar = tk.Frame(outer, bg=SIDEBAR, width=250)
+        sidebar = self.sidebar = tk.Frame(outer, bg=SIDEBAR, width=250)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
 
@@ -2868,7 +2978,7 @@ class ToolboxApp:
             self.nav_buttons[cls.key] = button
 
         # --- Inhalt ---
-        right = tk.Frame(outer, bg=BG)
+        right = self.right = tk.Frame(outer, bg=BG)
         right.pack(side="left", fill="both", expand=True)
 
         header = tk.Frame(right, bg=BG)
@@ -2913,12 +3023,14 @@ class ToolboxApp:
 
     def close(self):
         """Fenster schliessen und die Warteschlange sauber anhalten."""
-        if self._pump_job is not None:
-            try:
-                self.root.after_cancel(self._pump_job)
-            except tk.TclError:
-                pass
-            self._pump_job = None
+        for job in (self._pump_job, self._window_job):
+            if job is not None:
+                try:
+                    self.root.after_cancel(job)
+                except tk.TclError:
+                    pass
+        self._pump_job = self._window_job = None
+        self._remember_window()
         self.root.destroy()
 
     def _bind_keys(self):
@@ -2926,6 +3038,97 @@ class ToolboxApp:
             self.root.bind(f"<Control-Key-{index}>",
                            lambda _e, key=cls.key: self.show(key))
         self.root.bind("<Escape>", lambda _e: self.show("home"))
+
+    # ------------------------------------------------ Fenstergroesse und -lage
+    def _natural_size(self):
+        """Kleinste Fenstergroesse, in der Navigation und Startseite ganz passen.
+
+        Gemessen wird der tatsaechliche Platzbedarf statt einer festen Zahl:
+        Bringt ein Update weitere Module in die Navigation, waechst das Fenster
+        von selbst mit, und andere Schriften oder Bildschirmskalierungen sind
+        gleich beruecksichtigt.
+        """
+        previous = self.current
+        if previous != "home":
+            self.show("home")
+        self.root.update_idletasks()
+        sidebar_width = self.sidebar.winfo_reqwidth()
+        # Die Seitenleiste gibt ihre Hoehe sonst nicht nach oben weiter
+        self.sidebar.pack_propagate(True)
+        self.root.update_idletasks()
+        sidebar_height = self.sidebar.winfo_reqheight()
+        self.sidebar.pack_propagate(False)
+        width = sidebar_width + self.right.winfo_reqwidth()
+        height = (max(sidebar_height, self.right.winfo_reqheight())
+                  + self.status_bar.winfo_reqheight())
+        if previous and previous != "home":
+            self.show(previous)
+        return width, height
+
+    def _place_window(self):
+        """Fenster in der gemerkten oder in der kleinsten Groesse zeigen."""
+        saved = window_from_config(load_config())
+        width, height, x, y, min_width, min_height = window_placement(
+            self._natural_size(), work_area(self.root), saved,
+            lambda px, py: point_on_screen(self.root, px, py))
+        self.root.minsize(min_width, min_height)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+
+        maximized = bool(saved and saved["maximized"])
+        self._window = {"x": x, "y": y, "width": width, "height": height,
+                        "maximized": maximized}
+        # Geschrieben wird erst, wenn der Nutzer Groesse oder Lage aendert -
+        # eine nur berechnete Startlage gehoert nicht in die Einstellungen
+        self._window_saved = dict(self._window)
+
+        self.root.deiconify()
+        if maximized:
+            try:
+                self.root.state("zoomed")                  # Windows, macOS
+            except tk.TclError:
+                try:
+                    self.root.attributes("-zoomed", True)  # Linux
+                except tk.TclError:
+                    pass
+        self.root.bind("<Configure>", self._on_root_configure, add="+")
+
+    def _update_minsize(self):
+        """Mindestgroesse nachziehen - eine andere Sprache hat andere Textbreiten."""
+        placement = window_placement(self._natural_size(), work_area(self.root))
+        self.root.minsize(*placement[4:])
+
+    def _on_root_configure(self, event):
+        # Das Hauptfenster bekommt auch die Ereignisse aller Kind-Widgets
+        if event.widget is not self.root:
+            return
+        # Erst merken, wenn das Ziehen vorbei ist, nicht bei jedem Zwischenschritt
+        if self._window_job is not None:
+            self.root.after_cancel(self._window_job)
+        self._window_job = self.root.after(500, self._remember_window)
+
+    def _remember_window(self):
+        """Groesse und Lage in die Einstellungen schreiben, wenn sie sich geaendert haben."""
+        self._window_job = None
+        if self._window is None:
+            return
+        try:
+            state = self.root.state()
+            geometry = parse_geometry(self.root.geometry())
+        except tk.TclError:
+            return
+        if state == "zoomed":
+            # Maximiert meldet Tk die Bildschirmgroesse. Gemerkt bleibt die
+            # normale Lage, in die das Fenster beim Wiederherstellen zurueckkehrt.
+            self._window["maximized"] = True
+        elif state == "normal" and geometry:
+            self._window.update(geometry, maximized=False)
+        else:                                          # minimiert
+            return
+        if self._window != self._window_saved:
+            settings = load_config()
+            settings["window"] = dict(self._window)
+            if save_config(settings):
+                self._window_saved = dict(self._window)
 
     # ------------------------------------------------------------ Navigation
     def show(self, key):
@@ -2975,6 +3178,7 @@ class ToolboxApp:
         self._setup_style()
         self._build_layout()
         self.show(current)
+        self._update_minsize()
 
     def _on_language_selected(self, _event=None):
         chosen = self.language_box.get()

@@ -132,12 +132,18 @@ The app writes two files next to the script:
 
 | File | Contents |
 |---|---|
-| `bild-toolbox.json` | Selected language and colour scheme |
+| `bild-toolbox.json` | Selected language and colour scheme, window size and position |
 | `bild-toolbox_fehler.log` | Created **only** when an actual error occurs |
 
 If that folder is not writable, both files fall back to the user's home directory. In an
-executable built with PyInstaller they sit next to the EXE, so that language and colour scheme
-survive a restart. Both files are listed in `.gitignore`.
+executable built with PyInstaller they sit next to the EXE, so that the settings survive a
+restart. Both files are listed in `.gitignore`.
+
+On first start the window opens centred on the primary screen, at the smallest size that fits
+the navigation, the language selector and the start page completely. If you move, resize or
+maximise it, the app remembers that for the next start. Should the remembered position no
+longer lie on any connected screen, for example after unplugging a second monitor, the window
+opens centred again.
 
 ---
 

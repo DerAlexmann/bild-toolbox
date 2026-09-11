@@ -50,7 +50,7 @@ die Stellen, an denen fremde Daten verarbeitet werden:
 | **HEIC/HEIF** | Werden über `pillow-heif` gelesen. Auch dieses Paket aktuell halten. |
 | **AVIF** | Wird ab Pillow 11.3 von Pillow selbst gelesen, davor von `pillow-heif`. |
 | **Löschen und Verschieben** | Diese Aktionen sind endgültig, sofern `send2trash` nicht installiert und der Papierkorb-Modus aktiv ist. Es gibt keine eingebaute Rückgängig-Funktion. |
-| **Konfigurationsdatei** | `bild-toolbox.json` enthält nur Sprache und Farbschema, keine persönlichen Daten. |
+| **Konfigurationsdatei** | `bild-toolbox.json` enthält nur Sprache, Farbschema sowie Größe und Lage des Fensters, keine persönlichen Daten. |
 | **Fehlerprotokoll** | `bild-toolbox_fehler.log` kann Dateipfade enthalten. Vor dem Anhängen an ein Issue bitte durchsehen. |
 
 ## Abhängigkeiten aktuell halten

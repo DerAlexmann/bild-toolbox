@@ -9,6 +9,26 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+### Hinzugefügt
+
+- **Größe und Lage des Fensters werden gemerkt.** Wer das Fenster verschiebt,
+  größer zieht oder maximiert, findet es beim nächsten Start genauso wieder.
+  Die Angaben stehen in `bild-toolbox.json`. Liegt die gemerkte Stelle auf
+  keinem angeschlossenen Bildschirm mehr – etwa nach dem Abstecken eines
+  zweiten Monitors –, startet das Fenster wieder mittig.
+
+### Geändert
+
+- **Das Fenster startet nicht mehr überdimensioniert.** Statt fest
+  1400 × 900 Pixel öffnet es sich mittig auf dem Hauptbildschirm in der
+  kleinsten Größe, in der Navigation, Sprachauswahl und Startseite vollständig
+  Platz haben. Die große Lücke zwischen dem letzten Navigationseintrag und der
+  Sprachauswahl entfällt damit. Die Größe wird beim Start gemessen, nicht fest
+  vorgegeben: Bringt eine künftige Version weitere Module mit, wächst das
+  Fenster von selbst mit, und andere Schriften oder Skalierungen sind gleich
+  berücksichtigt. Auf kleinen Bildschirmen wird es auf die nutzbare Fläche
+  begrenzt. Diese Größe ist zugleich die Mindestgröße.
+
 ## [1.0.1] – 2026-09-07
 
 ### Behoben
