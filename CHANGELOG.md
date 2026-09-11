@@ -9,6 +9,8 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+## [1.0.3] – 2026-09-11
+
 ### Behoben
 
 - **Info & Hilfe: In der kleinsten Fenstergröße war der Text unter „Über
@@ -103,7 +105,8 @@ Einzelprogramme *Bildbetrachter Pro 2.0*, *Icon Extraktor*,
   `pillow-heif` wird mit einer gewöhnlichen `import`-Zeile geladen, damit
   PyInstaller es beim Packen findet
 
-[Unveröffentlicht]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.2...HEAD
+[Unveröffentlicht]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DerAlexmann/bild-toolbox/releases/tag/v1.0.0
