@@ -9,6 +9,12 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+### Geändert
+
+- **Die Fußzeile der Seitenleiste nennt jetzt auch die Unterstützung durch
+  Claude AI** – wie schon der Text unter „Info & Hilfe“, die README und die
+  Datei NOTICE.
+
 ### Behoben
 
 - **Sprach- oder Farbwechsel verwarf die Inhalte aller Module.** Beide
@@ -19,6 +25,12 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
   Farben an Ort und Stelle ausgetauscht. Alles andere bleibt, wo es ist,
   samt der geöffneten Seite und der letzten Statusmeldung, die nur die
   Sprache wechselt.
+- **Beim Sprach- oder Farbwechsel sah man die Oberfläche neu entstehen.**
+  Rund eine Viertelsekunde lang zeigte das Fenster jeden Zwischenstand: ein
+  weißes oder leeres dunkles Fenster, eine leere Seitenleiste, halb
+  gezeichnete Karten – nachgemessen bis zu zehn verschiedene Bilder. Jetzt
+  bleibt das alte Bild stehen, bis alles fertig ist. Danach folgt nur noch
+  ein kurzer Übergang von ein bis zwei Bildern, je rund 25 Millisekunden.
 - **Die Seitenleiste änderte ihre Breite mit der Sprache.** Seit 1.0.2 behielt
   sie nach dem Vermessen der Startgröße die Breite ihres Inhalts, je nach
   Sprache 236 oder 249 statt 250 Pixel. Nach einem Sprachwechsel fiel die

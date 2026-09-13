@@ -3343,7 +3343,8 @@ class ToolboxApp:
         # kleiner Fensterhoehe sichtbar und die Navigation weicht darueber aus.
         footer = set_text(Label(sidebar, bg=SIDEBAR, fg=SIDEBAR_GROUP, font=FONT_TINY,
                                 justify="left"),
-                          _("MIT License\nCopyright 2026\nAlexander Unverhau"))
+                          _("MIT License\nCopyright 2026\nAlexander Unverhau\n"
+                            "mit Unterstützung von Claude AI"))
         footer.pack(side="bottom", anchor="w", padx=18, pady=(6, 12))
 
         lang_frame = Frame(sidebar, bg=SIDEBAR)
@@ -3788,8 +3789,8 @@ TRANSLATIONS = {
         "Ergebnis": "Result",
         "Bibliotheken": "Libraries",
         "installiert": "installed",
-        "MIT License\nCopyright 2026\nAlexander Unverhau":
-            "MIT License\nCopyright 2026\nAlexander Unverhau",
+        "MIT License\nCopyright 2026\nAlexander Unverhau\nmit Unterstützung von Claude AI":
+            "MIT License\nCopyright 2026\nAlexander Unverhau\nwith assistance of Claude AI",
         "Papierkorb aktiv": "Recycle bin active",
         "ohne Papierkorb (send2trash fehlt)": "no recycle bin (send2trash missing)",
         "in den Papierkorb": "to the recycle bin",
