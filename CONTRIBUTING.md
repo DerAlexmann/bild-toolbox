@@ -64,6 +64,7 @@ Grober Aufbau der Datei von oben nach unten:
 | Konstanten | `APP_NAME`, `APP_VERSION`, Dateiendungen, Grenzwerte |
 | `THEMES` | Farbpaletten hell/dunkel |
 | Sprachumschaltung | `Translator`, Konfiguration lesen und schreiben |
+| Beschriftungen | `set_text()`, `refresh_texts()` – Texte, die einen Sprachwechsel mitmachen, ohne dass die Oberfläche neu gebaut wird |
 | Fensterlage | `window_placement()` – Startgröße aus dem gemessenen Platzbedarf, gemerkte Größe und Lage, Rückfall bei abgestecktem Monitor |
 | Hilfsfunktionen | `human_size`, `md5_of`, `average_hash`, `iter_images` … |
 | Bausteine der Oberfläche | `FlatButton`, `make_card`, `NavButton` … |
@@ -91,7 +92,10 @@ Grober Aufbau der Datei von oben nach unten:
    Reiter „Info & Hilfe" und die Tastenkürzel `Strg+1` … `Strg+9` lesen alle aus
    dieser Liste und aktualisieren sich von selbst.
 4. Alle sichtbaren Texte durch `_( ... )` führen und die deutschen Zeilen in
-   `TRANSLATIONS` ergänzen.
+   `TRANSLATIONS` ergänzen. Beschriftungen von Widgets über
+   `set_text(widget, _("..."))` setzen – auch spätere Änderungen, etwa die
+   Zusammenfassung nach einem Scan. Nur so macht der Text einen Sprachwechsel
+   mit. Vergessene Stellen meldet `tests/test_sprachwechsel.py`.
 
 > Die Tastenkürzel decken die ersten neun Einträge ab. Wächst die Liste
 > darüber hinaus, muss `_bind_keys()` angepasst werden – ein Test weist darauf

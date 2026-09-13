@@ -9,6 +9,17 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+### Behoben
+
+- **Englische Oberfläche: Einige Beschriftungen blieben deutsch.** Die Knöpfe
+  neben den Ordner- und Dateifeldern hießen weiter „Durchsuchen ...“, über
+  den Bildern im Bild-Vergleich stand „LINKES BILD“ und „RECHTES BILD“, und in
+  den Trefferlisten war die erste Datei jeder Gruppe als „[behalten]“
+  markiert. Ebenso unübersetzt waren „Unbekannt“ als Bildformat und die
+  Fehlerangabe „Gruppe …“ im Icon-Extraktor. Neue Tests prüfen jetzt, dass
+  jeder Text im Code eine Übersetzung hat und die englische Oberfläche keinen
+  deutschen Quelltext mehr zeigt.
+
 ## [1.0.4] – 2026-09-11
 
 ### Behoben

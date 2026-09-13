@@ -302,6 +302,52 @@ CONFIG_NAME = "bild-toolbox.json"
 LOG_NAME = "bild-toolbox_fehler.log"
 
 
+class Translated(str):
+    """Uebersetzter Text, der weiss, wie er entstanden ist.
+
+    Verhaelt sich ueberall wie ein gewoehnlicher String. Zusaetzlich kennt er
+    seinen deutschen Schluessel und die Werte, die mit format() eingesetzt
+    wurden, und kann sich deshalb nach einem Sprachwechsel neu bilden (siehe
+    again() und set_text). Das gilt auch fuer Verkettungen: "   " + _("Start")
+    ergibt wieder einen Translated.
+    """
+
+    def __new__(cls, text, key=None, values=None, parts=None):
+        new = super().__new__(cls, text)
+        new.key = key
+        new.values = values or {}
+        new.parts = parts                    # (links, rechts) einer Verkettung
+        return new
+
+    def format(self, *args, **kwargs):
+        if args or self.parts is not None:   # Positionsargumente nutzt hier niemand
+            return str.format(self, *args, **kwargs)
+        return Translated(str.format(self, **kwargs), self.key, kwargs)
+
+    def __add__(self, other):
+        if not isinstance(other, str):
+            return NotImplemented
+        return Translated(str.__add__(self, other), parts=(self, other))
+
+    def __radd__(self, other):
+        if not isinstance(other, str):
+            return NotImplemented
+        return Translated(str.__add__(other, self), parts=(other, self))
+
+    def again(self):
+        """Derselbe Text in der jetzt eingestellten Sprache."""
+        if self.parts is not None:
+            left, right = (part.again() if isinstance(part, Translated) else part
+                           for part in self.parts)
+            return Translated(str.__add__(left, right), parts=(left, right))
+        text = _(self.key)
+        if not self.values:
+            return text
+        # Eingesetzte Werte koennen selbst uebersetzt sein ("{action}" = "geloescht")
+        return text.format(**{name: value.again() if isinstance(value, Translated) else value
+                              for name, value in self.values.items()})
+
+
 class Translator:
     """Uebersetzt einen deutschen Quelltext in die eingestellte Sprache."""
 
@@ -310,8 +356,8 @@ class Translator:
 
     def __call__(self, text):
         if self.language == SOURCE_LANGUAGE:
-            return text
-        return TRANSLATIONS.get(self.language, {}).get(text, text)
+            return Translated(text, text)
+        return Translated(TRANSLATIONS.get(self.language, {}).get(text, text), text)
 
     def available(self):
         """Sprachkuerzel -> Anzeigename, Quellsprache immer zuerst."""
@@ -322,6 +368,91 @@ class Translator:
 
 
 _ = Translator()
+
+
+# --------------------------------------------------------------------------
+# Beschriftungen, die einen Sprachwechsel ueberstehen
+#
+# set_text() merkt sich zu jedem Widget, woraus sein Text entstanden ist.
+# refresh_texts() bildet nach einem Sprachwechsel alle Texte in der neuen
+# Sprache neu - die Widgets samt ihren Inhalten und Eingaben bleiben stehen,
+# statt abgerissen und neu gebaut zu werden.
+#
+# Wer den Text eines Widgets spaeter aendert, tut das ebenfalls ueber
+# set_text(). Sonst holte der naechste Sprachwechsel den alten Text zurueck.
+# --------------------------------------------------------------------------
+
+# Ort -> (Setzfunktion, Text). Ort ist meist (Widget, Option).
+_TEXTS = {}
+
+
+def remember_text(place, setter, text):
+    """setter(text) ausfuehren und den Text fuer den Sprachwechsel merken.
+
+    text ist ein Translated aus _() oder eine Funktion ohne Argumente, die den
+    Text liefert - fuer Zusammengesetztes wie den Statistikbericht. Ein
+    gewoehnlicher String vergisst, was an diesem Ort gemerkt war.
+    """
+    value = text() if callable(text) else text
+    setter(value)
+    if callable(text) or isinstance(value, Translated):
+        _TEXTS[place] = (setter, text)
+    else:
+        _TEXTS.pop(place, None)
+
+
+def forget_text(place):
+    """Gemerkten Text vergessen - der Ort wird nicht mehr nachuebersetzt."""
+    _TEXTS.pop(place, None)
+
+
+def set_text(widget, text, option="text", **options):
+    """Widget beschriften und den Text fuer den Sprachwechsel merken.
+
+    Weitere Optionen werden nur jetzt gesetzt, nicht bei jedem Sprachwechsel:
+        set_text(self.summary, _("Keine Treffer."), fg=MUTED)
+    Liefert das Widget, damit sich .pack() direkt anhaengen laesst.
+    """
+    if options:
+        widget.configure(**options)
+    remember_text((widget, option), lambda value: widget.configure(**{option: value}), text)
+    return widget
+
+
+def text_of(widget, option="text"):
+    """Aktueller Text eines Widgets - als Translated, wenn er gemerkt ist."""
+    remembered = _TEXTS.get((widget, option))
+    if remembered and isinstance(remembered[1], Translated):
+        return remembered[1]
+    return widget.cget(option)
+
+
+def set_heading(tree, column, text):
+    """Spaltenkopf einer Treeview beschriften und fuer den Sprachwechsel merken."""
+    remember_text((tree, "heading", column),
+                  lambda value: tree.heading(column, text=value), text)
+
+
+def set_item_text(tree, item, text):
+    """Eintrag einer Treeview beschriften und fuer den Sprachwechsel merken."""
+    remember_text((tree, "item", item), lambda value: tree.item(item, text=value), text)
+
+
+def refresh_texts():
+    """Alle gemerkten Texte in die eingestellte Sprache bringen.
+
+    Zerstoerte Widgets melden sich mit einem TclError und fallen dabei aus
+    dem Verzeichnis heraus.
+    """
+    for place, (setter, text) in list(_TEXTS.items()):
+        value = text() if callable(text) else text.again()
+        try:
+            setter(value)
+        except tk.TclError:
+            del _TEXTS[place]
+            continue
+        if not callable(text):
+            _TEXTS[place] = (setter, value)
 
 
 def config_path():
@@ -565,7 +696,7 @@ def image_info(path):
     try:
         with Image.open(path) as im:
             width, height = im.size
-            fmt = im.format or "Unbekannt"
+            fmt = im.format or _("Unbekannt")
         size_bytes = os.path.getsize(path)
         return {"resolution": f"{width}x{height}", "width": width, "height": height,
                 "pixels": width * height, "bytes": size_bytes,
@@ -645,10 +776,11 @@ class FlatButton(tk.Button):
         bg, hover, fg = styles.get(kind, styles["secondary"])
         kw.setdefault("padx", 14)
         kw.setdefault("pady", 6)
-        super().__init__(parent, text=text, command=command, bg=bg, fg=fg,
+        super().__init__(parent, command=command, bg=bg, fg=fg,
                          activebackground=hover, activeforeground=fg,
                          disabledforeground=BTN_DISABLED, relief="flat", bd=0,
                          highlightthickness=0, cursor="hand2", font=FONT_SMALL, **kw)
+        set_text(self, text)
         self._bg, self._hover = bg, hover
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
@@ -674,8 +806,8 @@ def make_card(parent, **pack_kw):
 
 
 def card_title(parent, text):
-    tk.Label(parent, text=text, font=FONT_BOLD, bg=CARD, fg=TEXT,
-             anchor="w").pack(fill="x", padx=14, pady=(12, 6))
+    set_text(tk.Label(parent, font=FONT_BOLD, bg=CARD, fg=TEXT, anchor="w"),
+             text).pack(fill="x", padx=14, pady=(12, 6))
 
 
 class ScrollArea(tk.Frame):
@@ -754,15 +886,17 @@ class ScrollArea(tk.Frame):
         super().destroy()
 
 
-def path_row(parent, label, var, browse_cmd, button_text="Durchsuchen ..."):
+def path_row(parent, label, var, browse_cmd, button_text=None):
     """Zeile: Beschriftung + Eingabefeld + Durchsuchen-Button."""
     row = tk.Frame(parent, bg=CARD)
     row.pack(fill="x", padx=14, pady=4)
-    tk.Label(row, text=label, font=FONT_SMALL, bg=CARD, fg=MUTED,
-             width=16, anchor="w").pack(side="left")
+    set_text(tk.Label(row, font=FONT_SMALL, bg=CARD, fg=MUTED, width=16, anchor="w"),
+             label).pack(side="left")
     entry = ttk.Entry(row, textvariable=var)
     entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-    FlatButton(row, button_text, browse_cmd).pack(side="right")
+    # Frueher stand hier ein fester deutscher Vorgabetext - in der englischen
+    # Oberflaeche hiessen diese Knoepfe deshalb weiter "Durchsuchen ..."
+    FlatButton(row, button_text or _("Durchsuchen ..."), browse_cmd).pack(side="right")
     return entry
 
 
@@ -779,8 +913,8 @@ class NavButton(tk.Frame):
         self.icon = tk.Label(self, text=icon, bg=SIDEBAR, fg=SIDEBAR_TEXT,
                              font=("Segoe UI Emoji", 11), width=3)
         self.icon.pack(side="left", pady=5)
-        self.label = tk.Label(self, text=text, bg=SIDEBAR, fg=SIDEBAR_TEXT,
-                              font=FONT_SMALL, anchor="w")
+        self.label = set_text(tk.Label(self, bg=SIDEBAR, fg=SIDEBAR_TEXT,
+                                       font=FONT_SMALL, anchor="w"), text)
         self.label.pack(side="left", fill="x", expand=True, pady=5)
 
         for widget in (self, self.icon, self.label):
@@ -900,11 +1034,11 @@ class HomeModule(Module):
         if missing:
             text = _("Optionale Zusatzmodule fehlen: {list}  -  Details unter "
                      "'Info & Hilfe'.").format(list=", ".join(missing))
-            tk.Label(hint, text=text, bg=BG, fg=WARN, font=FONT_SMALL,
-                     anchor="w").pack(fill="x")
+            set_text(tk.Label(hint, bg=BG, fg=WARN, font=FONT_SMALL, anchor="w"),
+                     text).pack(fill="x")
         else:
-            tk.Label(hint, text=_("Alle optionalen Zusatzmodule sind installiert."),
-                     bg=BG, fg=OK, font=FONT_SMALL, anchor="w").pack(fill="x")
+            set_text(tk.Label(hint, bg=BG, fg=OK, font=FONT_SMALL, anchor="w"),
+                     _("Alle optionalen Zusatzmodule sind installiert.")).pack(fill="x")
 
     def _make_tile(self, parent, cls, row, col):
         tile = tk.Frame(parent, bg=CARD, highlightbackground=BORDER,
@@ -914,12 +1048,11 @@ class HomeModule(Module):
         icon = tk.Label(tile, text=cls.icon, bg=CARD, fg=ACCENT,
                         font=("Segoe UI Emoji", 20), anchor="w")
         icon.pack(fill="x", padx=16, pady=(14, 2))
-        title = tk.Label(tile, text=_(cls.title), bg=CARD, fg=TEXT, font=FONT_H2,
-                         anchor="w")
+        title = set_text(tk.Label(tile, bg=CARD, fg=TEXT, font=FONT_H2, anchor="w"),
+                         _(cls.title))
         title.pack(fill="x", padx=16)
-        desc = tk.Label(tile, text=_(cls.description), bg=CARD, fg=MUTED,
-                        font=FONT_SMALL, anchor="w", justify="left",
-                        wraplength=250)
+        desc = set_text(tk.Label(tile, bg=CARD, fg=MUTED, font=FONT_SMALL, anchor="w",
+                                 justify="left", wraplength=250), _(cls.description))
         desc.pack(fill="x", padx=16, pady=(4, 16))
 
         def open_module(_e=None):
@@ -978,10 +1111,11 @@ class CompareModule(Module):
         FlatButton(row, _("Rechtes Bild öffnen"), lambda: self.open("right"),
                    kind="primary").pack(side="left", padx=6)
         FlatButton(row, _("Seiten tauschen"), self.swap).pack(side="left", padx=6)
-        tk.Checkbutton(row, text=_("in den Papierkorb"), variable=self.use_trash,
-                       bg=CARD, fg=MUTED, font=FONT_SMALL, activebackground=CARD,
-                       state="normal" if HAS_TRASH else "disabled",
-                       selectcolor=CARD).pack(side="right")
+        set_text(tk.Checkbutton(row, variable=self.use_trash, bg=CARD, fg=MUTED,
+                                font=FONT_SMALL, activebackground=CARD,
+                                state="normal" if HAS_TRASH else "disabled",
+                                selectcolor=CARD),
+                 _("in den Papierkorb")).pack(side="right")
 
         panes = tk.Frame(self.body, bg=BG)
         panes.pack(fill="both", expand=True, pady=(10, 0))
@@ -989,15 +1123,15 @@ class CompareModule(Module):
         panes.columnconfigure(1, weight=1, uniform="panes")
         panes.rowconfigure(0, weight=1)
 
-        self._make_pane(panes, "left", "LINKES BILD", 0)
-        self._make_pane(panes, "right", "RECHTES BILD", 1)
+        self._make_pane(panes, "left", _("LINKES BILD"), 0)
+        self._make_pane(panes, "right", _("RECHTES BILD"), 1)
 
     def _make_pane(self, parent, side, caption, column):
         pane = tk.Frame(parent, bg=CARD, highlightbackground=BORDER,
                         highlightcolor=BORDER, highlightthickness=1)
         pane.grid(row=0, column=column, sticky="nsew", padx=(0, 6) if column == 0 else (6, 0))
 
-        tk.Label(pane, text=_(caption), font=FONT_BOLD, bg=CARD, fg=TEXT).pack(pady=(10, 6))
+        set_text(tk.Label(pane, font=FONT_BOLD, bg=CARD, fg=TEXT), caption).pack(pady=(10, 6))
 
         # Ein tk.Label fordert immer so viel Platz an, wie sein Bild gross ist.
         # Diese Anforderung wandert sonst nach oben durch pane -> panes ->
@@ -1013,14 +1147,14 @@ class CompareModule(Module):
         holder.bind("<Configure>", lambda _e, s=side: self._schedule_fit(s))
         self.holders[side] = holder
 
-        canvas = tk.Label(holder, bg=VIEWER_BG, text=_("Kein Bild geladen"),
-                          fg=VIEWER_TEXT, font=FONT_SMALL)
+        canvas = set_text(tk.Label(holder, bg=VIEWER_BG, fg=VIEWER_TEXT, font=FONT_SMALL),
+                          _("Kein Bild geladen"))
         canvas.pack(fill="both", expand=True)
         canvas.bind("<Double-Button-1>", lambda _e, s=side: self.open(s))
         self.labels[side] = canvas
 
-        info = tk.Label(pane, text=_("Keine Datei geladen"), font=FONT_SMALL, bg=CARD,
-                        fg=MUTED, justify="left", anchor="w", wraplength=420)
+        info = set_text(tk.Label(pane, font=FONT_SMALL, bg=CARD, fg=MUTED, justify="left",
+                                 anchor="w", wraplength=420), _("Keine Datei geladen"))
         info.pack(fill="x", padx=12, pady=8)
         self.infos[side] = info
 
@@ -1049,13 +1183,13 @@ class CompareModule(Module):
                 return
             self.paths[side] = path
             checksum = md5_of(path)
-            self.infos[side].configure(
-                text=_("Datei: {name}\n"
+            set_text(self.infos[side],
+                     _("Datei: {name}\n"
                        "Auflösung: {res}     Größe: {size}     Format: {format}\n"
                        "MD5: {md5}\n{path}").format(
-                    name=os.path.basename(path), res=info["resolution"],
-                    size=info["size"], format=info["format"],
-                    md5=checksum, path=path), fg=TEXT)
+                         name=os.path.basename(path), res=info["resolution"],
+                         size=info["size"], format=info["format"],
+                         md5=checksum, path=path), fg=TEXT)
             self._fit(side)
             self.status(_("Geladen: {name}").format(name=os.path.basename(path)))
         except Exception as e:
@@ -1100,7 +1234,7 @@ class CompareModule(Module):
             thumb.thumbnail((width, height), Image.Resampling.LANCZOS)
             photo = ImageTk.PhotoImage(thumb)
             self.photos[side] = photo
-            label.configure(image=photo, text="")
+            set_text(label, "", image=photo)
         except Exception as e:
             logging.error(f"Fehler beim Skalieren: {e}")
 
@@ -1117,9 +1251,10 @@ class CompareModule(Module):
             feld["left"], feld["right"] = feld["right"], feld["left"]
 
         links, rechts = self.infos["left"], self.infos["right"]
-        text, farbe = links.cget("text"), links.cget("fg")
-        links.configure(text=rechts.cget("text"), fg=rechts.cget("fg"))
-        rechts.configure(text=text, fg=farbe)
+        # text_of statt cget: So bleiben die Texte auch nach dem Tausch uebersetzbar
+        text, farbe = text_of(links), links.cget("fg")
+        set_text(links, text_of(rechts), fg=rechts.cget("fg"))
+        set_text(rechts, text, fg=farbe)
 
         for side in ("left", "right"):
             if self.images[side] is None:
@@ -1134,8 +1269,8 @@ class CompareModule(Module):
         self.paths[side] = None
         self.images[side] = None
         self.photos[side] = None
-        self.labels[side].configure(image="", text=_("Kein Bild geladen"))
-        self.infos[side].configure(text=_("Keine Datei geladen"), fg=MUTED)
+        set_text(self.labels[side], _("Kein Bild geladen"), image="")
+        set_text(self.infos[side], _("Keine Datei geladen"), fg=MUTED)
 
     def external(self, side):
         path = self.paths[side]
@@ -1207,9 +1342,9 @@ class GroupResultModule(Module):
         columns = ("res", "size")
         self.tree = ttk.Treeview(wrap, columns=columns, show="tree headings",
                                  selectmode="extended")
-        self.tree.heading("#0", text=_(self.tree_heading))
-        self.tree.heading("res", text=_("Auflösung"))
-        self.tree.heading("size", text=_("Größe"))
+        set_heading(self.tree, "#0", _(self.tree_heading))
+        set_heading(self.tree, "res", _("Auflösung"))
+        set_heading(self.tree, "size", _("Größe"))
         self.tree.column("#0", width=520, stretch=True)
         self.tree.column("res", width=110, anchor="center", stretch=False)
         self.tree.column("size", width=90, anchor="e", stretch=False)
@@ -1230,6 +1365,8 @@ class GroupResultModule(Module):
 
     def render_groups(self):
         for item in self.tree.get_children():
+            for row in (item, *self.tree.get_children(item)):
+                forget_text((self.tree, "item", row))
             self.tree.delete(item)
         self.thumbnails.clear()
 
@@ -1240,11 +1377,10 @@ class GroupResultModule(Module):
 
         thumb_budget = MAX_THUMBS
         for index, (caption, entries) in enumerate(groups, 1):
-            parent = self.tree.insert(
-                "", "end",
-                text=_("GRUPPE {no}  -  {name}  ({count} Dateien)").format(
-                    no=index, name=caption, count=len(entries)),
-                open=True, tags=("group",))
+            parent = self.tree.insert("", "end", open=True, tags=("group",))
+            set_item_text(self.tree, parent,
+                          _("GRUPPE {no}  -  {name}  ({count} Dateien)").format(
+                              no=index, name=caption, count=len(entries)))
             for position, entry in enumerate(entries):
                 path = entry["path"]
                 thumb = None
@@ -1252,14 +1388,16 @@ class GroupResultModule(Module):
                     thumb = self._thumbnail(path)
                     if thumb is not None:
                         thumb_budget -= 1
-                marker = "  [behalten]" if position == 0 else ""
                 tags = (path, "keep") if position == 0 else (path,)
-                self.tree.insert(parent, "end",
-                                 text=f" {os.path.basename(path)}{marker}",
-                                 values=(entry.get("resolution", "?"),
-                                         entry.get("size", "?")),
-                                 image=thumb if thumb else "",
-                                 tags=tags)
+                item = self.tree.insert(parent, "end",
+                                        values=(entry.get("resolution", "?"),
+                                                entry.get("size", "?")),
+                                        image=thumb if thumb else "",
+                                        tags=tags)
+                text = " " + os.path.basename(path)
+                if position == 0:                   # die erste Datei jeder Gruppe bleibt
+                    text += "  " + _("[behalten]")
+                set_item_text(self.tree, item, text)
         total = sum(len(entries) - 1 for _c, entries in groups)
         self.set_summary(_("{groups} Gruppen - {files} Datei(en) über die jeweils "
                            "erste hinaus. Rechtsklick für Optionen.").format(
@@ -1277,7 +1415,7 @@ class GroupResultModule(Module):
             return None
 
     def set_summary(self, text):
-        self.summary.configure(text=text)
+        set_text(self.summary, text)
 
     # --------------------------------------------------------------- Auswahl
     def selected_paths(self):
@@ -1441,14 +1579,14 @@ class DuplicateModule(GroupResultModule):
 
         options = tk.Frame(card, bg=CARD)
         options.pack(fill="x", padx=14, pady=(4, 4))
-        tk.Checkbutton(options, text=_("Unterordner einbeziehen"), variable=self.recursive,
-                       bg=CARD, fg=TEXT, font=FONT_SMALL, activebackground=CARD,
-                       selectcolor=CARD).pack(side="left")
-        tk.Label(options, text=_("Pixel min.:"), bg=CARD, fg=MUTED,
-                 font=FONT_SMALL).pack(side="left", padx=(20, 4))
+        set_text(tk.Checkbutton(options, variable=self.recursive, bg=CARD, fg=TEXT,
+                                font=FONT_SMALL, activebackground=CARD, selectcolor=CARD),
+                 _("Unterordner einbeziehen")).pack(side="left")
+        set_text(tk.Label(options, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("Pixel min.:")).pack(side="left", padx=(20, 4))
         ttk.Entry(options, textvariable=self.min_px, width=12).pack(side="left")
-        tk.Label(options, text=_("max.:"), bg=CARD, fg=MUTED,
-                 font=FONT_SMALL).pack(side="left", padx=(10, 4))
+        set_text(tk.Label(options, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("max.:")).pack(side="left", padx=(10, 4))
         ttk.Entry(options, textvariable=self.max_px, width=12).pack(side="left")
         FlatButton(options, _("Filter anwenden"), self.render_groups).pack(side="left", padx=10)
 
@@ -1462,18 +1600,19 @@ class DuplicateModule(GroupResultModule):
                    kind="danger").pack(side="left", padx=(20, 6))
         FlatButton(actions, _("Alle Duplikate verschieben"), self.move_all_extra,
                    kind="warn").pack(side="left")
-        tk.Checkbutton(actions, text=_("in den Papierkorb"), variable=self.use_trash,
-                       bg=CARD, fg=MUTED, font=FONT_SMALL, activebackground=CARD,
-                       state="normal" if HAS_TRASH else "disabled",
-                       selectcolor=CARD).pack(side="right")
+        set_text(tk.Checkbutton(actions, variable=self.use_trash, bg=CARD, fg=MUTED,
+                                font=FONT_SMALL, activebackground=CARD,
+                                state="normal" if HAS_TRASH else "disabled",
+                                selectcolor=CARD),
+                 _("in den Papierkorb")).pack(side="right")
 
         self.progress = ttk.Progressbar(card, mode="determinate")
         self.progress.pack(fill="x", padx=14, pady=(0, 12))
 
         result = make_card(self.body, fill="both", expand=True, pady=(10, 0))
         card_title(result, _("Gefundene Gruppen"))
-        self.summary = tk.Label(result, text=_("Noch nicht gescannt."), bg=CARD, fg=MUTED,
-                                font=FONT_SMALL, anchor="w")
+        self.summary = set_text(tk.Label(result, bg=CARD, fg=MUTED, font=FONT_SMALL,
+                                         anchor="w"), _("Noch nicht gescannt."))
         self.summary.pack(fill="x", padx=14, pady=(0, 6))
         self.build_tree(result)
 
@@ -1613,11 +1752,11 @@ class SimilarModule(GroupResultModule):
 
         options = tk.Frame(card, bg=CARD)
         options.pack(fill="x", padx=14, pady=(4, 4))
-        tk.Checkbutton(options, text=_("Unterordner einbeziehen"), variable=self.recursive,
-                       bg=CARD, fg=TEXT, font=FONT_SMALL, activebackground=CARD,
-                       selectcolor=CARD).pack(side="left")
-        tk.Label(options, text=_("Ähnlichkeit:"), bg=CARD, fg=MUTED,
-                 font=FONT_SMALL).pack(side="left", padx=(20, 6))
+        set_text(tk.Checkbutton(options, variable=self.recursive, bg=CARD, fg=TEXT,
+                                font=FONT_SMALL, activebackground=CARD, selectcolor=CARD),
+                 _("Unterordner einbeziehen")).pack(side="left")
+        set_text(tk.Label(options, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("Ähnlichkeit:")).pack(side="left", padx=(20, 6))
         scale = ttk.Scale(options, from_=50, to=100, orient="horizontal", length=220)
         scale.pack(side="left")
         self.similarity_label = tk.Label(options, text="90 %", bg=CARD, fg=TEXT,
@@ -1636,18 +1775,19 @@ class SimilarModule(GroupResultModule):
                    kind="danger").pack(side="left", padx=(20, 6))
         FlatButton(actions, _("Alle Ähnlichen verschieben"), self.move_all_extra,
                    kind="warn").pack(side="left")
-        tk.Checkbutton(actions, text=_("in den Papierkorb"), variable=self.use_trash,
-                       bg=CARD, fg=MUTED, font=FONT_SMALL, activebackground=CARD,
-                       state="normal" if HAS_TRASH else "disabled",
-                       selectcolor=CARD).pack(side="right")
+        set_text(tk.Checkbutton(actions, variable=self.use_trash, bg=CARD, fg=MUTED,
+                                font=FONT_SMALL, activebackground=CARD,
+                                state="normal" if HAS_TRASH else "disabled",
+                                selectcolor=CARD),
+                 _("in den Papierkorb")).pack(side="right")
 
         self.progress = ttk.Progressbar(card, mode="determinate")
         self.progress.pack(fill="x", padx=14, pady=(0, 12))
 
         result = make_card(self.body, fill="both", expand=True, pady=(10, 0))
         card_title(result, _("Gefundene Gruppen"))
-        self.summary = tk.Label(result, text=_("Noch nicht gescannt."), bg=CARD, fg=MUTED,
-                                font=FONT_SMALL, anchor="w")
+        self.summary = set_text(tk.Label(result, bg=CARD, fg=MUTED, font=FONT_SMALL,
+                                         anchor="w"), _("Noch nicht gescannt."))
         self.summary.pack(fill="x", padx=14, pady=(0, 6))
         self.build_tree(result)
 
@@ -1771,15 +1911,16 @@ class DimensionModule(Module):
 
         options = tk.Frame(card, bg=CARD)
         options.pack(fill="x", padx=14, pady=4)
-        tk.Checkbutton(options, text=_("Unterordner einbeziehen"), variable=self.recursive,
-                       bg=CARD, fg=TEXT, font=FONT_SMALL, activebackground=CARD,
-                       selectcolor=CARD).pack(side="left")
-        tk.Label(options, text=_("Schwellwert in Pixel:"), bg=CARD, fg=MUTED,
-                 font=FONT_SMALL).pack(side="left", padx=(20, 6))
+        set_text(tk.Checkbutton(options, variable=self.recursive, bg=CARD, fg=TEXT,
+                                font=FONT_SMALL, activebackground=CARD, selectcolor=CARD),
+                 _("Unterordner einbeziehen")).pack(side="left")
+        set_text(tk.Label(options, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("Schwellwert in Pixel:")).pack(side="left", padx=(20, 6))
         ttk.Spinbox(options, from_=1, to=200000, width=8,
                     textvariable=self.threshold).pack(side="left")
-        tk.Label(options, text=_("Treffer = Breite UND Höhe kleiner als dieser Wert"),
-                 bg=CARD, fg=MUTED, font=FONT_SMALL).pack(side="left", padx=8)
+        set_text(tk.Label(options, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("Treffer = Breite UND Höhe kleiner als dieser Wert")).pack(
+            side="left", padx=8)
 
         scan_row = tk.Frame(card, bg=CARD)
         scan_row.pack(fill="x", padx=14, pady=(6, 12))
@@ -1787,8 +1928,8 @@ class DimensionModule(Module):
         self.scan_btn.pack(side="left")
         self.cancel_btn = FlatButton(scan_row, _("Abbrechen"), self.cancel, state="disabled")
         self.cancel_btn.pack(side="left", padx=6)
-        self.summary = tk.Label(scan_row, text=_("Noch nicht gescannt."), bg=CARD,
-                                fg=MUTED, font=FONT_SMALL)
+        self.summary = set_text(tk.Label(scan_row, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                                _("Noch nicht gescannt."))
         self.summary.pack(side="left", padx=12)
 
         action_card = make_card(self.body, fill="x", pady=(10, 0))
@@ -1796,10 +1937,10 @@ class DimensionModule(Module):
 
         move_row = tk.Frame(action_card, bg=CARD)
         move_row.pack(fill="x", padx=14, pady=2)
-        tk.Radiobutton(move_row, text=_("Verschieben nach"), variable=self.action,
-                       value="move", command=self._sync, bg=CARD, fg=TEXT,
-                       font=FONT_SMALL, activebackground=CARD, selectcolor=CARD,
-                       width=16, anchor="w").pack(side="left")
+        set_text(tk.Radiobutton(move_row, variable=self.action, value="move",
+                                command=self._sync, bg=CARD, fg=TEXT, font=FONT_SMALL,
+                                activebackground=CARD, selectcolor=CARD, width=16,
+                                anchor="w"), _("Verschieben nach")).pack(side="left")
         self.target_entry = ttk.Entry(move_row, textvariable=self.target)
         self.target_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.target_btn = FlatButton(move_row, _("Durchsuchen ..."),
@@ -1808,14 +1949,14 @@ class DimensionModule(Module):
 
         del_row = tk.Frame(action_card, bg=CARD)
         del_row.pack(fill="x", padx=14, pady=2)
-        tk.Radiobutton(del_row, text=_("Löschen"), variable=self.action, value="delete",
-                       command=self._sync, bg=CARD, fg=TEXT, font=FONT_SMALL,
-                       activebackground=CARD, selectcolor=CARD, width=16,
-                       anchor="w").pack(side="left")
-        self.perm_chk = tk.Checkbutton(
-            del_row, text=_("endgültig löschen (ohne Haken: in den Papierkorb)"),
-            variable=self.permanent, bg=CARD, fg=TEXT, font=FONT_SMALL,
-            activebackground=CARD, selectcolor=CARD)
+        set_text(tk.Radiobutton(del_row, variable=self.action, value="delete",
+                                command=self._sync, bg=CARD, fg=TEXT, font=FONT_SMALL,
+                                activebackground=CARD, selectcolor=CARD, width=16,
+                                anchor="w"), _("Löschen")).pack(side="left")
+        self.perm_chk = set_text(tk.Checkbutton(
+            del_row, variable=self.permanent, bg=CARD, fg=TEXT, font=FONT_SMALL,
+            activebackground=CARD, selectcolor=CARD),
+            _("endgültig löschen (ohne Haken: in den Papierkorb)"))
         self.perm_chk.pack(side="left")
 
         run_row = tk.Frame(action_card, bg=CARD)
@@ -1839,12 +1980,20 @@ class DimensionModule(Module):
         self.log.pack(side="left", fill="both", expand=True)
 
         if not HAS_TRASH:
-            self._log(_("Hinweis: 'send2trash' nicht installiert - Löschen erfolgt "
-                      "endgültig.  pip install send2trash"))
+            # Steht allein im Protokoll, bis der erste Scan es leert - bis dahin
+            # folgt der Hinweis einem Sprachwechsel
+            remember_text((self.log, "content"), self._set_log,
+                          _("Hinweis: 'send2trash' nicht installiert - Löschen erfolgt "
+                            "endgültig.  pip install send2trash"))
         self._sync()
 
     # ------------------------------------------------------------------ Helfer
+    def _set_log(self, text):
+        self.log.delete("1.0", "end")
+        self.log.insert("end", text + "\n")
+
     def _log(self, message):
+        forget_text((self.log, "content"))      # was jetzt dazukommt, ist Verlauf
         self.log.insert("end", message + "\n")
         self.log.see("end")
 
@@ -1896,7 +2045,7 @@ class DimensionModule(Module):
         self.candidates = []
         self.log.delete("1.0", "end")
         self._set_busy(True)
-        self.summary.configure(text=_("Scanne ..."))
+        set_text(self.summary, _("Scanne ..."))
         self.progress.configure(mode="indeterminate")
         self.progress.start(12)
         # Tk-Variablen im Hauptthread lesen und dem Worker mitgeben
@@ -1945,7 +2094,7 @@ class DimensionModule(Module):
             total=total, hits=len(candidates), limit=threshold)
         if errors:
             message += _("  {count} Datei(en) nicht lesbar.").format(count=errors)
-        self.summary.configure(text=message, fg=OK if candidates else MUTED)
+        set_text(self.summary, message, fg=OK if candidates else MUTED)
         self._log(message)
         for path, width, height in candidates[:1000]:
             self._log(f"  {width}x{height}\t{path}")
@@ -2035,7 +2184,7 @@ class DimensionModule(Module):
         summary = _("{done} {action}, {failed} fehlgeschlagen.").format(
             done=done, action=verb, failed=failed)
         self._log(_("Fertig: ") + summary)
-        self.summary.configure(text=summary)
+        set_text(self.summary, summary)
         self.status(_("{done} Datei(en) {action}.").format(done=done, action=verb))
         messagebox.showinfo(
             _("Fertig"),
@@ -2072,25 +2221,27 @@ class RenameModule(Module):
 
         pattern_row = tk.Frame(card, bg=CARD)
         pattern_row.pack(fill="x", padx=14, pady=4)
-        tk.Label(pattern_row, text=_("Muster"), font=FONT_SMALL, bg=CARD, fg=MUTED,
-                 width=16, anchor="w").pack(side="left")
+        set_text(tk.Label(pattern_row, font=FONT_SMALL, bg=CARD, fg=MUTED, width=16,
+                          anchor="w"), _("Muster")).pack(side="left")
         entry = ttk.Entry(pattern_row, textvariable=self.pattern)
         entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         entry.bind("<KeyRelease>", lambda _e: self.preview())
-        tk.Label(pattern_row, text=_("Start bei"), font=FONT_SMALL, bg=CARD,
-                 fg=MUTED).pack(side="left", padx=(0, 4))
+        set_text(tk.Label(pattern_row, font=FONT_SMALL, bg=CARD, fg=MUTED),
+                 _("Start bei")).pack(side="left", padx=(0, 4))
         start_entry = ttk.Entry(pattern_row, textvariable=self.start_number, width=6)
         start_entry.pack(side="left")
         start_entry.bind("<KeyRelease>", lambda _e: self.preview())
 
-        tk.Label(card, text=_(self.PLACEHOLDERS), bg=CARD, fg=MUTED, font=FONT_TINY,
-                 anchor="w", justify="left", wraplength=900).pack(fill="x", padx=14, pady=(2, 4))
+        set_text(tk.Label(card, bg=CARD, fg=MUTED, font=FONT_TINY, anchor="w",
+                          justify="left", wraplength=900),
+                 _(self.PLACEHOLDERS)).pack(fill="x", padx=14, pady=(2, 4))
 
         actions = tk.Frame(card, bg=CARD)
         actions.pack(fill="x", padx=14, pady=(4, 12))
-        tk.Checkbutton(actions, text=_("Endung klein schreiben"), variable=self.lower_ext,
-                       command=self.preview, bg=CARD, fg=TEXT, font=FONT_SMALL,
-                       activebackground=CARD, selectcolor=CARD).pack(side="left")
+        set_text(tk.Checkbutton(actions, variable=self.lower_ext, command=self.preview,
+                                bg=CARD, fg=TEXT, font=FONT_SMALL, activebackground=CARD,
+                                selectcolor=CARD),
+                 _("Endung klein schreiben")).pack(side="left")
         FlatButton(actions, _("Vorschau aktualisieren"), self.preview).pack(side="left", padx=10)
         self.run_btn = FlatButton(actions, _("Umbenennen"), self.rename, kind="primary",
                                   state="disabled")
@@ -2098,18 +2249,15 @@ class RenameModule(Module):
 
         preview_card = make_card(self.body, fill="both", expand=True, pady=(10, 0))
         card_title(preview_card, _("Vorschau"))
-        self.summary = tk.Label(preview_card, text=_("Noch kein Ordner gewählt."), bg=CARD,
-                                fg=MUTED, font=FONT_SMALL, anchor="w")
+        self.summary = set_text(tk.Label(preview_card, bg=CARD, fg=MUTED, font=FONT_SMALL,
+                                         anchor="w"), _("Noch kein Ordner gewählt."))
         self.summary.pack(fill="x", padx=14, pady=(0, 6))
 
         wrap = tk.Frame(preview_card, bg=CARD)
         wrap.pack(fill="both", expand=True, padx=14, pady=(0, 14))
-        self.tree = ttk.Treeview(wrap, columns=("new",), show="headings")
-        self.tree.heading("#1", text=_("neuer Name"))
-        self.tree.column("#1", width=300)
-        self.tree["columns"] = ("old", "new")
-        self.tree.heading("old", text=_("bisher"))
-        self.tree.heading("new", text=_("neu"))
+        self.tree = ttk.Treeview(wrap, columns=("old", "new"), show="headings")
+        set_heading(self.tree, "old", _("bisher"))
+        set_heading(self.tree, "new", _("neu"))
         self.tree.column("old", width=340)
         self.tree.column("new", width=340)
         yscroll = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
@@ -2130,7 +2278,7 @@ class RenameModule(Module):
         self.run_btn.configure(state="disabled")
 
         if not folder or not os.path.isdir(folder):
-            self.summary.configure(text=_("Noch kein gültiger Ordner gewählt."), fg=MUTED)
+            set_text(self.summary, _("Noch kein gültiger Ordner gewählt."), fg=MUTED)
             return
 
         pattern = self.pattern.get()
@@ -2156,8 +2304,8 @@ class RenameModule(Module):
                 new_base = pattern.format(counter=counter, name=base, date=today,
                                           w=width, h=height)
             except (KeyError, ValueError, IndexError) as e:
-                self.summary.configure(
-                    text=_("Muster ungültig: {error}").format(error=e), fg=DANGER)
+                set_text(self.summary, _("Muster ungültig: {error}").format(error=e),
+                         fg=DANGER)
                 return
             new_name = new_base + ext
             key = new_name.lower()
@@ -2169,18 +2317,17 @@ class RenameModule(Module):
             counter += 1
 
         if not self.plan:
-            self.summary.configure(text=_("Keine Bilddateien in diesem Ordner."), fg=MUTED)
+            set_text(self.summary, _("Keine Bilddateien in diesem Ordner."), fg=MUTED)
             return
         if conflicts:
-            self.summary.configure(
-                text=_("{count} Dateien - ACHTUNG: {conflicts} doppelte Zielnamen. "
+            set_text(self.summary,
+                     _("{count} Dateien - ACHTUNG: {conflicts} doppelte Zielnamen. "
                        "Bitte {{counter}} im Muster verwenden.").format(
-                    count=len(self.plan), conflicts=conflicts), fg=DANGER)
+                         count=len(self.plan), conflicts=conflicts), fg=DANGER)
             return
 
-        self.summary.configure(
-            text=_("{count} Dateien werden umbenannt.").format(count=len(self.plan)),
-            fg=OK)
+        set_text(self.summary,
+                 _("{count} Dateien werden umbenannt.").format(count=len(self.plan)), fg=OK)
         self.run_btn.configure(state="normal")
 
     # -------------------------------------------------------------- Ausführen
@@ -2245,9 +2392,9 @@ class StatisticsModule(Module):
 
         actions = tk.Frame(card, bg=CARD)
         actions.pack(fill="x", padx=14, pady=(4, 12))
-        tk.Checkbutton(actions, text=_("Unterordner einbeziehen"), variable=self.recursive,
-                       bg=CARD, fg=TEXT, font=FONT_SMALL, activebackground=CARD,
-                       selectcolor=CARD).pack(side="left")
+        set_text(tk.Checkbutton(actions, variable=self.recursive, bg=CARD, fg=TEXT,
+                                font=FONT_SMALL, activebackground=CARD, selectcolor=CARD),
+                 _("Unterordner einbeziehen")).pack(side="left")
         self.run_btn = FlatButton(actions, _("Analyse starten"), self.start, kind="primary")
         self.run_btn.pack(side="left", padx=12)
         FlatButton(actions, _("Bericht speichern ..."), self.save_report).pack(side="left")
@@ -2265,8 +2412,8 @@ class StatisticsModule(Module):
         self.text.configure(yscrollcommand=yscroll.set)
         yscroll.pack(side="right", fill="y")
         self.text.pack(side="left", fill="both", expand=True)
-        self.text.insert("end", _("Ordner wählen und Analyse starten."))
-        self.text.configure(state="disabled")
+        remember_text((self.text, "content"), self._show_text,
+                      _("Ordner wählen und Analyse starten."))
 
     def start(self):
         folder = self.folder.get().strip()
@@ -2315,10 +2462,25 @@ class StatisticsModule(Module):
         self.progress.stop()
         self.busy = False
         self.run_btn.configure(state="normal")
+        # Als Funktion gemerkt: Nach einem Sprachwechsel entsteht der Bericht neu
+        stamp = datetime.now()
+        remember_text((self.text, "content"), self._show_text,
+                      lambda: self._report(folder, stats, stamp))
+        self.status(_("Analyse fertig: {count} Bilder.").format(
+            count=stats["files"]))
 
+    def _show_text(self, text):
+        self.text.configure(state="normal")
+        self.text.delete("1.0", "end")
+        self.text.insert("end", text)
+        self.text.configure(state="disabled")
+
+    @staticmethod
+    def _report(folder, stats, stamp):
+        """Der Analysebericht als Text, in der eingestellten Sprache."""
         line = "-" * 66
-        stamp = datetime.now().strftime(_("%d.%m.%Y %H:%M"))
-        out = [_("ORDNER-ANALYSE") + "   " + stamp, folder, line, ""]
+        out = [_("ORDNER-ANALYSE") + "   " + stamp.strftime(_("%d.%m.%Y %H:%M")),
+               folder, line, ""]
         if stats["files"] == 0:
             out.append(_("Keine lesbaren Bilddateien gefunden."))
         else:
@@ -2350,13 +2512,7 @@ class StatisticsModule(Module):
                     _("  Höchstes Bild   : {name} ({value} px)").format(
                         name=stats["tallest"][0], value=stats["tallest"][1]),
                     "", _("Analyse abgeschlossen.")]
-
-        self.text.configure(state="normal")
-        self.text.delete("1.0", "end")
-        self.text.insert("end", "\n".join(out))
-        self.text.configure(state="disabled")
-        self.status(_("Analyse fertig: {count} Bilder.").format(
-            count=stats["files"]))
+        return "\n".join(out)
 
     def save_report(self):
         content = self.text.get("1.0", "end").strip()
@@ -2411,13 +2567,13 @@ class ConverterModule(Module):
         card_title(card, _("Format"))
         row = tk.Frame(card, bg=CARD)
         row.pack(fill="x", padx=14, pady=4)
-        tk.Label(row, text=_("Von"), font=FONT_SMALL, bg=CARD, fg=MUTED,
-                 width=16, anchor="w").pack(side="left")
+        set_text(tk.Label(row, font=FONT_SMALL, bg=CARD, fg=MUTED, width=16, anchor="w"),
+                 _("Von")).pack(side="left")
         ttk.Combobox(row, textvariable=self.input_format,
                      values=list(self.SUPPORTED_FORMATS), state="readonly",
                      width=14).pack(side="left")
-        tk.Label(row, text=_("nach"), font=FONT_SMALL, bg=CARD,
-                 fg=MUTED).pack(side="left", padx=10)
+        set_text(tk.Label(row, font=FONT_SMALL, bg=CARD, fg=MUTED),
+                 _("nach")).pack(side="left", padx=10)
         ttk.Combobox(row, textvariable=self.output_format,
                      values=list(self.SUPPORTED_FORMATS), state="readonly",
                      width=14).pack(side="left")
@@ -2426,8 +2582,8 @@ class ConverterModule(Module):
 
         quality_row = tk.Frame(card, bg=CARD)
         quality_row.pack(fill="x", padx=14, pady=(4, 12))
-        tk.Label(quality_row, text=_("Qualität"), font=FONT_SMALL, bg=CARD, fg=MUTED,
-                 width=16, anchor="w").pack(side="left")
+        set_text(tk.Label(quality_row, font=FONT_SMALL, bg=CARD, fg=MUTED, width=16,
+                          anchor="w"), _("Qualität")).pack(side="left")
         scale = ttk.Scale(quality_row, from_=1, to=100, orient="horizontal", length=260)
         scale.pack(side="left")
         self.quality_label = tk.Label(quality_row, text="95 %", bg=CARD, fg=TEXT,
@@ -2435,8 +2591,8 @@ class ConverterModule(Module):
         self.quality_label.pack(side="left", padx=8)
         scale.set(95)                       # erst jetzt - Label muss existieren
         scale.configure(command=self._on_quality)
-        tk.Label(quality_row, text=_("(wirkt bei JPEG, WebP und AVIF)"), bg=CARD,
-                 fg=MUTED, font=FONT_SMALL).pack(side="left")
+        set_text(tk.Label(quality_row, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("(wirkt bei JPEG, WebP und AVIF)")).pack(side="left")
 
         batch = make_card(self.body, fill="both", expand=True, pady=(10, 0))
         card_title(batch, _("Batch-Konvertierung"))
@@ -2464,8 +2620,8 @@ class ConverterModule(Module):
 
         self.progress = ttk.Progressbar(batch, mode="determinate")
         self.progress.pack(fill="x", padx=14, pady=(0, 4))
-        self.summary = tk.Label(batch, text=_("Keine Dateien in der Liste."), bg=CARD,
-                                fg=MUTED, font=FONT_SMALL, anchor="w")
+        self.summary = set_text(tk.Label(batch, bg=CARD, fg=MUTED, font=FONT_SMALL,
+                                         anchor="w"), _("Keine Dateien in der Liste."))
         self.summary.pack(fill="x", padx=14, pady=(0, 12))
 
     def _on_quality(self, value):
@@ -2518,9 +2674,9 @@ class ConverterModule(Module):
         for path in self.files:
             self.listbox.insert("end", os.path.basename(path))
         count = len(self.files)
-        self.summary.configure(
-            text=_("Keine Dateien in der Liste.") if not count
-            else _("{count} Datei(en) bereit für die Konvertierung.").format(count=count))
+        set_text(self.summary,
+                 _("Keine Dateien in der Liste.") if not count
+                 else _("{count} Datei(en) bereit für die Konvertierung.").format(count=count))
 
     # ------------------------------------------------------------ Konvertieren
     def convert_image(self, source, dest, output_format, quality):
@@ -2617,9 +2773,9 @@ class ConverterModule(Module):
         self.busy = False
         self.run_btn.configure(state="normal")
         self.progress.configure(value=0)
-        self.summary.configure(
-            text=_("{done} konvertiert, {failed} fehlgeschlagen -> {target}").format(
-                done=done, failed=failed, target=target))
+        set_text(self.summary,
+                 _("{done} konvertiert, {failed} fehlgeschlagen -> {target}").format(
+                     done=done, failed=failed, target=target))
         self.status(_("Batch fertig: {done} konvertiert, {failed} fehlgeschlagen.").format(
             done=done, failed=failed))
         message = _("{done} Datei(en) konvertiert nach:\n{target}").format(
@@ -2660,9 +2816,9 @@ class IconModule(Module):
         path_row(card, _("Ausgabe-Ordner"), self.output,
                  lambda: self.ask_dir(_("Zielordner auswählen"), self.output))
 
-        tk.Label(card, text=_("Unterstützt: .exe, .dll, .sys, .ocx, .cpl, .scr sowie "
-                            ".ico, .png, .jpg, .bmp, .tif ..."),
-                 bg=CARD, fg=MUTED, font=FONT_TINY, anchor="w").pack(fill="x", padx=14)
+        set_text(tk.Label(card, bg=CARD, fg=MUTED, font=FONT_TINY, anchor="w"),
+                 _("Unterstützt: .exe, .dll, .sys, .ocx, .cpl, .scr sowie "
+                   ".ico, .png, .jpg, .bmp, .tif ...")).pack(fill="x", padx=14)
 
         actions = tk.Frame(card, bg=CARD)
         actions.pack(fill="x", padx=14, pady=(8, 12))
@@ -2671,8 +2827,8 @@ class IconModule(Module):
         FlatButton(actions, _("Alle speichern"), self.save_icons,
                    kind="success").pack(side="left", padx=6)
         FlatButton(actions, _("Zurücksetzen"), self.reset).pack(side="left")
-        tk.Label(actions, text=_("Speichern als"), bg=CARD, fg=MUTED,
-                 font=FONT_SMALL).pack(side="left", padx=(20, 6))
+        set_text(tk.Label(actions, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("Speichern als")).pack(side="left", padx=(20, 6))
         ttk.Combobox(actions, textvariable=self.save_format, values=["ICO", "PNG"],
                      state="readonly", width=8).pack(side="left")
 
@@ -2681,8 +2837,8 @@ class IconModule(Module):
 
         preview = make_card(self.body, fill="both", expand=True, pady=(10, 0))
         card_title(preview, _("Icon-Vorschau"))
-        self.summary = tk.Label(preview, text=_("Noch nichts geladen."), bg=CARD, fg=MUTED,
-                                font=FONT_SMALL, anchor="w")
+        self.summary = set_text(tk.Label(preview, bg=CARD, fg=MUTED, font=FONT_SMALL,
+                                         anchor="w"), _("Noch nichts geladen."))
         self.summary.pack(fill="x", padx=14, pady=(0, 6))
 
         wrap = tk.Frame(preview, bg=CARD)
@@ -2699,10 +2855,10 @@ class IconModule(Module):
             scrollregion=self.canvas.bbox("all")))
 
         if not HAS_ICOEXTRACT:
-            tk.Label(preview, text=_("Hinweis: Modul 'icoextract' fehlt - Icons aus EXE/DLL "
-                                   "können nicht gelesen werden.  pip install icoextract"),
-                     bg=CARD, fg=WARN, font=FONT_SMALL,
-                     anchor="w").pack(fill="x", padx=14, pady=(0, 10))
+            set_text(tk.Label(preview, bg=CARD, fg=WARN, font=FONT_SMALL, anchor="w"),
+                     _("Hinweis: Modul 'icoextract' fehlt - Icons aus EXE/DLL "
+                       "können nicht gelesen werden.  pip install icoextract")).pack(
+                fill="x", padx=14, pady=(0, 10))
 
     def pick_source(self):
         path = filedialog.askopenfilename(title=_("Quelldatei auswählen"),
@@ -2728,7 +2884,8 @@ class IconModule(Module):
                     with Image.open(data) as im:
                         icons.extend(iter_frames(im))
                 except Exception as e:
-                    self._last_error = f"Gruppe {index}: {e}"
+                    self._last_error = _("Gruppe {index}: {error}").format(
+                        index=index, error=e)
         except IconExtractorError as e:
             self._last_error = f"icoextract: {e}"
         except Exception as e:
@@ -2763,15 +2920,15 @@ class IconModule(Module):
 
         if self.icons:
             self.render_preview()
-            self.summary.configure(
-                text=_("{count} Icons geladen - 'Alle speichern' zum Sichern.").format(
-                    count=len(self.icons)), fg=OK)
+            set_text(self.summary,
+                     _("{count} Icons geladen - 'Alle speichern' zum Sichern.").format(
+                         count=len(self.icons)), fg=OK)
             self.status(_("{count} Icons geladen.").format(count=len(self.icons)))
         else:
             message = _("Keine Icons in dieser Datei gefunden!")
             if self._last_error:
                 message += _("\n\nDetails: {error}").format(error=self._last_error)
-            self.summary.configure(text=_("Keine Icons gefunden."), fg=DANGER)
+            set_text(self.summary, _("Keine Icons gefunden."), fg=DANGER)
             self.status(_("Keine Icons gefunden."))
             messagebox.showwarning(_("Fehler"), message)
 
@@ -2829,7 +2986,7 @@ class IconModule(Module):
 
         self.progress.configure(value=0)
         saved_text = _("{done}/{total} Icons gespeichert.").format(done=saved, total=total)
-        self.summary.configure(text=saved_text, fg=OK)
+        set_text(self.summary, saved_text, fg=OK)
         self.status(saved_text)
         message = _("{done} von {total} Icons gespeichert in:\n{folder}").format(
             done=saved, total=total, folder=output)
@@ -2847,7 +3004,7 @@ class IconModule(Module):
         for widget in self.grid_frame.winfo_children():
             widget.destroy()
         self.progress.configure(value=0)
-        self.summary.configure(text=_("Noch nichts geladen."), fg=MUTED)
+        set_text(self.summary, _("Noch nichts geladen."), fg=MUTED)
         self.status(_("Bereit"))
 
 
@@ -2880,10 +3037,11 @@ class InfoModule(Module):
             row.pack(fill="x", padx=14, pady=3)
             tk.Label(row, text=cls.icon, bg=CARD, fg=ACCENT,
                      font=("Segoe UI Emoji", 11), width=3).pack(side="left")
-            tk.Label(row, text=_(cls.title), bg=CARD, fg=TEXT, font=FONT_BOLD,
-                     width=20, anchor="w").pack(side="left")
-            tk.Label(row, text=_(cls.description), bg=CARD, fg=MUTED, font=FONT_SMALL,
-                     anchor="w", justify="left").pack(side="left", fill="x", expand=True)
+            set_text(tk.Label(row, bg=CARD, fg=TEXT, font=FONT_BOLD, width=20, anchor="w"),
+                     _(cls.title)).pack(side="left")
+            set_text(tk.Label(row, bg=CARD, fg=MUTED, font=FONT_SMALL, anchor="w",
+                              justify="left"),
+                     _(cls.description)).pack(side="left", fill="x", expand=True)
         tk.Frame(help_card, bg=CARD, height=8).pack()
 
         deps_card = make_card(page, fill="x", pady=(10, 0))
@@ -2895,10 +3053,10 @@ class InfoModule(Module):
                      font=FONT_SMALL, width=3).pack(side="left")
             tk.Label(row, text=name, bg=CARD, fg=TEXT, font=FONT_BOLD, width=20,
                      anchor="w").pack(side="left")
-            tk.Label(row, text=purpose, bg=CARD, fg=MUTED, font=FONT_SMALL,
-                     anchor="w").pack(side="left", fill="x", expand=True)
-            tk.Label(row, text=_("installiert") if installed else command, bg=CARD,
-                     fg=OK if installed else WARN, font=FONT_SMALL).pack(side="right")
+            set_text(tk.Label(row, bg=CARD, fg=MUTED, font=FONT_SMALL, anchor="w"),
+                     purpose).pack(side="left", fill="x", expand=True)
+            set_text(tk.Label(row, bg=CARD, fg=OK if installed else WARN, font=FONT_SMALL),
+                     _("installiert") if installed else command).pack(side="right")
         tk.Frame(deps_card, bg=CARD, height=8).pack()
 
         about_card = make_card(page, fill="both", expand=True, pady=(10, 0))
@@ -2912,8 +3070,8 @@ class InfoModule(Module):
                  "\n\nLicensed under MIT License\n"
                  "Copyright 2026 Alexander Unverhau\n"
                  "Created with assistance of Claude AI")
-        tk.Label(about_card, text=about, bg=CARD, fg=TEXT, font=FONT_SMALL,
-                 justify="left", anchor="nw", wraplength=900).pack(
+        set_text(tk.Label(about_card, bg=CARD, fg=TEXT, font=FONT_SMALL, justify="left",
+                          anchor="nw", wraplength=900), about).pack(
             fill="both", expand=True, padx=14, pady=(0, 14))
         area.bind_wheel()
 
@@ -3014,20 +3172,20 @@ class ToolboxApp:
         brand.pack(fill="x", pady=(14, 8), padx=16)
         tk.Label(brand, text=APP_NAME, bg=SIDEBAR, fg=SIDEBAR_TITLE,
                  font=("Segoe UI", 15, "bold"), anchor="w").pack(fill="x")
-        tk.Label(brand, text=_("Version {version}").format(version=APP_VERSION),
-                 bg=SIDEBAR, fg=SIDEBAR_GROUP,
-                 font=FONT_TINY, anchor="w").pack(fill="x")
+        set_text(tk.Label(brand, bg=SIDEBAR, fg=SIDEBAR_GROUP, font=FONT_TINY, anchor="w"),
+                 _("Version {version}").format(version=APP_VERSION)).pack(fill="x")
 
         # Fusszeile und Sprachauswahl zuerst packen - so bleiben sie auch bei
         # kleiner Fensterhoehe sichtbar und die Navigation weicht darueber aus.
-        footer = tk.Label(sidebar, text=_("MIT License\nCopyright 2026\nAlexander Unverhau"),
-                          bg=SIDEBAR, fg=SIDEBAR_GROUP, font=FONT_TINY, justify="left")
+        footer = set_text(tk.Label(sidebar, bg=SIDEBAR, fg=SIDEBAR_GROUP, font=FONT_TINY,
+                                   justify="left"),
+                          _("MIT License\nCopyright 2026\nAlexander Unverhau"))
         footer.pack(side="bottom", anchor="w", padx=18, pady=(6, 12))
 
         lang_frame = tk.Frame(sidebar, bg=SIDEBAR)
-        tk.Label(lang_frame, text=_("Sprache & Darstellung"), bg=SIDEBAR,
-                 fg=SIDEBAR_GROUP, font=("Segoe UI", 8, "bold"),
-                 anchor="w").pack(fill="x")
+        set_text(tk.Label(lang_frame, bg=SIDEBAR, fg=SIDEBAR_GROUP,
+                          font=("Segoe UI", 8, "bold"), anchor="w"),
+                 _("Sprache & Darstellung")).pack(fill="x")
         row = tk.Frame(lang_frame, bg=SIDEBAR)
         row.pack(fill="x", pady=(3, 0))
 
@@ -3040,12 +3198,12 @@ class ToolboxApp:
         self.language_box.bind("<<ComboboxSelected>>", self._on_language_selected)
 
         self.dark_var = tk.BooleanVar(value=CURRENT_THEME == "dark")
-        tk.Checkbutton(row, text=_("Dunkel"), variable=self.dark_var,
-                       command=self._on_theme_toggled, bg=SIDEBAR, fg=SIDEBAR_TEXT,
-                       activebackground=SIDEBAR, activeforeground=SIDEBAR_TITLE,
-                       selectcolor=SIDEBAR_HOVER, font=FONT_SMALL,
-                       highlightthickness=0, bd=0, cursor="hand2").pack(
-            side="right", padx=(6, 0))
+        set_text(tk.Checkbutton(row, variable=self.dark_var,
+                                command=self._on_theme_toggled, bg=SIDEBAR, fg=SIDEBAR_TEXT,
+                                activebackground=SIDEBAR, activeforeground=SIDEBAR_TITLE,
+                                selectcolor=SIDEBAR_HOVER, font=FONT_SMALL,
+                                highlightthickness=0, bd=0, cursor="hand2"),
+                 _("Dunkel")).pack(side="right", padx=(6, 0))
 
         lang_frame.pack(side="bottom", fill="x", padx=18, pady=(0, 4))
 
@@ -3053,9 +3211,14 @@ class ToolboxApp:
         for cls in self.module_classes:
             if cls.group and cls.group != current_group:
                 current_group = cls.group
-                tk.Label(sidebar, text=_(cls.group).upper(), bg=SIDEBAR, fg=SIDEBAR_GROUP,
-                         font=("Segoe UI", 8, "bold"), anchor="w").pack(
-                    fill="x", padx=18, pady=(9, 2))
+                heading = tk.Label(sidebar, bg=SIDEBAR, fg=SIDEBAR_GROUP,
+                                   font=("Segoe UI", 8, "bold"), anchor="w")
+                heading.pack(fill="x", padx=18, pady=(9, 2))
+                # .upper() machte aus dem Translated einen gewoehnlichen String -
+                # die Grossschreibung gehoert deshalb in die Setzfunktion
+                remember_text((heading, "text"),
+                              lambda value, label=heading: label.configure(text=value.upper()),
+                              _(cls.group))
             button = NavButton(sidebar, cls.icon, _(cls.title),
                                lambda key=cls.key: self.show(key))
             button.pack(fill="x")
@@ -3084,13 +3247,14 @@ class ToolboxApp:
         # draengte er sonst die Statusleiste hinaus und zog die Seitenleiste
         # mit in die Laenge.
         status_bar.pack(side="bottom", fill="x", before=outer)
-        self.status_var = tk.StringVar(value=_("Bereit"))
+        self.status_var = tk.StringVar()
+        self.set_status(_("Bereit"))
         tk.Label(status_bar, textvariable=self.status_var, bg=STATUS_BG, fg=MUTED,
                  font=FONT_SMALL, anchor="w").pack(side="left", padx=14, pady=3)
-        tk.Label(status_bar, text=(_("Papierkorb aktiv") if HAS_TRASH
-                                   else _("ohne Papierkorb (send2trash fehlt)")),
-                 bg=STATUS_BG, fg=OK if HAS_TRASH else WARN, font=FONT_TINY,
-                 anchor="e").pack(side="right", padx=14)
+        set_text(tk.Label(status_bar, bg=STATUS_BG, fg=OK if HAS_TRASH else WARN,
+                          font=FONT_TINY, anchor="e"),
+                 _("Papierkorb aktiv") if HAS_TRASH
+                 else _("ohne Papierkorb (send2trash fehlt)")).pack(side="right", padx=14)
 
     def _pump(self):
         """Aufträge der Hintergrundthreads im Hauptthread abarbeiten."""
@@ -3236,8 +3400,8 @@ class ToolboxApp:
         page, _module = self.pages[key]
         page.pack(fill="both", expand=True)
 
-        self.header_title.configure(text=f"{cls.icon}   {_(cls.title)}")
-        self.header_subtitle.configure(text=_(cls.subtitle))
+        set_text(self.header_title, cls.icon + "   " + _(cls.title))
+        set_text(self.header_subtitle, _(cls.subtitle))
         for nav_key, button in self.nav_buttons.items():
             button.set_active(nav_key == key)
         self.current = key
@@ -3261,12 +3425,22 @@ class ToolboxApp:
         self.current = None
         self.outer.destroy()
         self.status_bar.destroy()
+        _TEXTS.clear()                        # alles wird neu gebaut und neu gemerkt
 
         self.root.configure(bg=BG)
         self._setup_style()
         self._build_layout()
         self.show(current)
         self._update_minsize()
+
+    def _refresh_texts(self):
+        """Alle Beschriftungen in die eingestellte Sprache bringen - ohne Neuaufbau.
+
+        Widgets, Modulinhalte und Eingaben bleiben stehen; nur die Texte
+        werden ausgetauscht (siehe set_text).
+        """
+        refresh_texts()
+        self.language_box.set(self.language_names[_.language])
 
     def _on_language_selected(self, _event=None):
         chosen = self.language_box.get()
@@ -3328,7 +3502,7 @@ class ToolboxApp:
         self.show("compare")
 
     def set_status(self, text):
-        self.status_var.set(text)
+        remember_text((self, "status"), self.status_var.set, text)
 
     # ---------------------------------------------------------- Abhängigkeiten
     @staticmethod
@@ -3409,6 +3583,7 @@ TRANSLATIONS = {
         "Ordner": "Folder",
         "Datei": "File",
         "Treffer": "Match",
+        "Unbekannt": "Unknown",
         "Format": "Format",
         "Auflösung": "Resolution",
         "Größe": "Size",
@@ -3417,7 +3592,6 @@ TRANSLATIONS = {
         "nach": "to",
         "bisher": "current",
         "neu": "new",
-        "neuer Name": "new name",
         "max.:": "max.:",
         "Pixel min.:": "Pixels min.:",
         "Suche": "Search",
@@ -3510,6 +3684,8 @@ TRANSLATIONS = {
         "Kein Bild geladen": "No image loaded",
         "Keine Datei geladen": "No file loaded",
         "Keine Datei geladen.": "No file loaded.",
+        "LINKES BILD": "LEFT IMAGE",
+        "RECHTES BILD": "RIGHT IMAGE",
         "Im Explorer zeigen": "Show in Explorer",
         "Bild konnte nicht gelesen werden.": "The image could not be read.",
         "Bild konnte nicht geladen werden:\n{error}":
@@ -3554,6 +3730,7 @@ TRANSLATIONS = {
         "Zielordner auswählen": "Select destination folder",
         "GRUPPE {no}  -  {name}  ({count} Dateien)":
             "GROUP {no}  -  {name}  ({count} files)",
+        "[behalten]": "[keep]",
         "{groups} Gruppen - {files} Datei(en) über die jeweils erste hinaus. "
         "Rechtsklick für Optionen.":
             "{groups} groups - {files} file(s) beyond the first of each. "
@@ -3739,6 +3916,7 @@ TRANSLATIONS = {
         "{done} von {total} Icons gespeichert in:\n{folder}":
             "{done} of {total} icons saved to:\n{folder}",
         "\n\nDetails: {error}": "\n\nDetails: {error}",
+        "Gruppe {index}: {error}": "Group {index}: {error}",
 
         # --- Info & Hilfe ---------------------------------------------------
         "Die Module im Überblick": "The modules at a glance",

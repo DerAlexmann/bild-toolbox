@@ -1,19 +1,81 @@
 """Prueft die Sprachtabelle.
 
 Quellsprache ist Deutsch: der deutsche Text im Code ist zugleich der
-Schluessel. Diese Tests fangen die beiden Fehler ab, die beim Uebersetzen
+Schluessel. Diese Tests fangen die Fehler ab, die beim Uebersetzen
 tatsaechlich passieren - ein vergessener oder verschriebener Platzhalter
-(fuehrt zur Laufzeit zu einem KeyError in ``str.format``) und eine Sprache
-ohne Anzeigenamen in der Seitenleiste.
+(fuehrt zur Laufzeit zu einem KeyError in ``str.format``), eine Sprache ohne
+Anzeigenamen in der Seitenleiste, ein neuer Text ohne Uebersetzung und ein
+Eintrag, zu dem es im Code keinen Text (mehr) gibt.
 """
 
+import ast
 import re
+from pathlib import Path
 
+import pytest
+
+QUELLE = Path(__file__).resolve().parent.parent / "Bild-Toolbox.pyw"
 PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
 def placeholders(text):
     return set(PLACEHOLDER.findall(text))
+
+
+def schluessel_im_quelltext():
+    """Alle _("...")-Aufrufe mit fester Zeichenkette einsammeln."""
+    baum = ast.parse(QUELLE.read_text(encoding="utf-8"))
+    gefunden = []
+    for knoten in ast.walk(baum):
+        if (isinstance(knoten, ast.Call) and isinstance(knoten.func, ast.Name)
+                and knoten.func.id == "_" and knoten.args):
+            argument = knoten.args[0]
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                gefunden.append(argument.value)
+    return gefunden
+
+
+def alle_schluessel(toolbox):
+    """Feste Schluessel plus die, die erst zur Laufzeit nachgeschlagen werden.
+
+    Titel, Untertitel, Beschreibung und Gruppe der Module stehen als
+    Klassenattribute im Code und werden erst mit _(cls.title) usw. uebersetzt.
+    """
+    dynamisch = [toolbox.RenameModule.PLACEHOLDERS, toolbox.GroupResultModule.tree_heading]
+    for cls in toolbox.ToolboxApp.module_classes:
+        dynamisch += [cls.title, cls.subtitle, cls.description, cls.group,
+                      getattr(cls, "tree_heading", "")]
+    return list(dict.fromkeys(schluessel_im_quelltext() + [t for t in dynamisch if t]))
+
+
+def test_es_gibt_ueberhaupt_texte(toolbox):
+    assert len(alle_schluessel(toolbox)) > 200
+
+
+@pytest.mark.parametrize("sprache", ["en"])
+def test_jeder_schluessel_ist_uebersetzt(toolbox, sprache):
+    tabelle = toolbox.TRANSLATIONS[sprache]
+    fehlend = [k for k in alle_schluessel(toolbox) if k not in tabelle]
+    assert not fehlend, f"ohne Uebersetzung in '{sprache}': {fehlend[:5]}"
+
+
+@pytest.mark.parametrize("sprache", ["en"])
+def test_keine_verwaisten_eintraege(toolbox, sprache):
+    """Ein Eintrag ohne passenden Schluessel ist fast immer ein Tippfehler."""
+    bekannt = set(alle_schluessel(toolbox))
+    ueberzaehlig = [k for k in toolbox.TRANSLATIONS[sprache] if k not in bekannt]
+    assert not ueberzaehlig, f"ohne Entsprechung im Code: {ueberzaehlig[:5]}"
+
+
+def test_translator_liefert_in_jeder_sprache_text(toolbox):
+    vorher = toolbox._.language
+    try:
+        for sprache in [toolbox.SOURCE_LANGUAGE, *toolbox.TRANSLATIONS]:
+            toolbox._.language = sprache
+            for schluessel in alle_schluessel(toolbox):
+                assert toolbox._(schluessel).strip(), (sprache, schluessel)
+    finally:
+        toolbox._.language = vorher
 
 
 def test_jede_sprache_hat_einen_anzeigenamen(toolbox):

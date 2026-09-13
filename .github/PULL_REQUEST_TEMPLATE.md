@@ -17,7 +17,7 @@ Behebt #
 - [ ] `ruff check .` läuft ohne Beanstandung
 - [ ] `python -m pytest` läuft durch
 - [ ] Das Programm startet und das betroffene Modul funktioniert
-- [ ] Neue oder geänderte Texte sind über `_( ... )` geführt
+- [ ] Neue oder geänderte Texte sind über `_( ... )` geführt, Beschriftungen von Widgets über `set_text()` gesetzt
 - [ ] Platzhalter in geschweiften Klammern sind in allen Sprachen unverändert
 - [ ] Neue Farben stehen in **allen** Paletten in `THEMES`
 
