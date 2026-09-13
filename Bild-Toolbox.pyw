@@ -632,6 +632,34 @@ def point_on_screen(root, x, y):
     return 0 <= x < root.winfo_screenwidth() and 0 <= y < root.winfo_screenheight()
 
 
+def pause_drawing(window_id):
+    """Haelt das Zeichnen eines Fensters samt Inhalt an; liefert die Fortsetzung.
+
+    Tk zeichnet jedes Element einzeln auf den Bildschirm. Aendern sich beim
+    Umschalten Texte, Farben und Layout, saehe man sonst jeden Zwischenstand.
+    Mit WM_SETREDRAW laesst Windows das alte Bild stehen, bis alles fertig
+    ist; danach wird in einem Zug neu gezeichnet.
+
+    window_id ist root.winfo_id() - das Tk-Kindfenster, nicht das aeussere
+    Fenster. Die Fortsetzung muss auch im Fehlerfall laufen, sonst bliebe das
+    Fenster eingefroren; der Aufruf gehoert deshalb in ein try/finally.
+    """
+    if sys.platform != "win32":
+        return lambda: None
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        user32.SendMessageW(window_id, 0x000B, 0, 0)       # WM_SETREDRAW aus
+    except (AttributeError, OSError):
+        return lambda: None
+
+    def resume():
+        user32.SendMessageW(window_id, 0x000B, 1, 0)       # WM_SETREDRAW an
+        # RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW
+        user32.RedrawWindow(window_id, None, None, 0x0001 | 0x0080 | 0x0100)
+    return resume
+
+
 # --------------------------------------------------------------------------
 # Allgemeine Helfer
 # --------------------------------------------------------------------------
@@ -3437,8 +3465,9 @@ class ToolboxApp:
         gleich beruecksichtigt.
         """
         previous = self.current
+        # Der Abstecher auf die Startseite laesst die Statuszeile stehen
         if previous != "home":
-            self.show("home")
+            self.show("home", reset_status=False)
         self.root.update_idletasks()
         sidebar_width = self.sidebar.winfo_reqwidth()
         # Die Seitenleiste gibt ihre Hoehe sonst nicht nach oben weiter
@@ -3446,11 +3475,15 @@ class ToolboxApp:
         self.root.update_idletasks()
         sidebar_height = self.sidebar.winfo_reqheight()
         self.sidebar.pack_propagate(False)
+        # Ohne das behielte die Seitenleiste die Breite ihres Inhalts - je nach
+        # Sprache 236 oder 249 statt 250 px -, und jede weitere Messung fiele
+        # zu breit aus. Das erneute Setzen fordert die feste Breite wieder an.
+        self.sidebar.configure(width=self.sidebar.cget("width"))
         width = sidebar_width + self.right.winfo_reqwidth()
         height = (max(sidebar_height, self.right.winfo_reqheight())
                   + self.status_bar.winfo_reqheight())
         if previous and previous != "home":
-            self.show(previous)
+            self.show(previous, reset_status=False)
         return width, height
 
     def _place_window(self):
@@ -3519,7 +3552,12 @@ class ToolboxApp:
                 self._window_saved = dict(self._window)
 
     # ------------------------------------------------------------ Navigation
-    def show(self, key):
+    def show(self, key, reset_status=True):
+        """Seite eines Moduls zeigen und sie dafuer bei Bedarf erst bauen.
+
+        reset_status=False laesst die Statuszeile stehen - fuer den kurzen
+        Abstecher auf die Startseite, mit dem _natural_size() misst.
+        """
         cls = next((c for c in self.module_classes if c.key == key), None)
         if cls is None:
             return
@@ -3541,33 +3579,34 @@ class ToolboxApp:
         for nav_key, button in self.nav_buttons.items():
             button.set_active(nav_key == key)
         self.current = key
-        self.set_status(_("Bereit"))
+        if reset_status:
+            self.set_status(_("Bereit"))
 
     # ------------------------------------------- Sprache und Farbschema
     def _busy(self):
-        """Laeuft gerade ein Scan oder eine Umwandlung?"""
+        """Laeuft gerade ein Scan oder eine Umwandlung?
+
+        Solange, wird nicht umgeschaltet. Bis 1.0.4 haette ein Wechsel die
+        Oberflaeche unter dem laufenden Vorgang abgerissen; das passiert nicht
+        mehr, die Sperre bleibt aber als Vorsichtsmassnahme.
+        """
         return any(module.busy for _page, module in self.pages.values() if module)
 
-    def _rebuild(self):
-        """Oberflaeche komplett neu aufbauen (nach Sprache oder Farbschema)."""
-        while not self.event_queue.empty():      # veraltete Auftraege verwerfen
-            self.event_queue.get_nowait()
+    def _switch(self, refresh):
+        """Sprache oder Farbschema umstellen, ohne die Oberflaeche neu zu bauen.
 
-        current = self.current or "home"
-        for page, _module in self.pages.values():
-            page.destroy()
-        self.pages.clear()
-        self.nav_buttons.clear()
-        self.current = None
-        self.outer.destroy()
-        self.status_bar.destroy()
-        _TEXTS.clear()                        # alles wird neu gebaut und neu gemerkt
-
-        self.root.configure(bg=BG)
-        self._setup_style()
-        self._build_layout()
-        self.show(current)
-        self._update_minsize()
+        Bis 1.0.4 wurde dafuer alles abgerissen und neu aufgebaut. Man sah
+        rund eine Viertelsekunde lang jeden Zwischenstand, und die Inhalte
+        aller Module gingen verloren - etwa das Ergebnis einer langen
+        Dublettensuche. Jetzt tauscht refresh() nur Texte bzw. Farben aus,
+        waehrend das Zeichnen ruht (siehe pause_drawing).
+        """
+        resume = pause_drawing(self.root.winfo_id())
+        try:
+            refresh()
+            self.root.update_idletasks()
+        finally:
+            resume()
 
     def _refresh_colors(self):
         """Alle Farben auf das eingestellte Schema umstellen - ohne Neuaufbau.
@@ -3590,6 +3629,7 @@ class ToolboxApp:
         """
         refresh_texts()
         self.language_box.set(self.language_names[_.language])
+        self._update_minsize()
 
     def _on_language_selected(self, _event=None):
         chosen = self.language_box.get()
@@ -3599,7 +3639,7 @@ class ToolboxApp:
                 return
 
     def set_language(self, code):
-        """Sprache umstellen und die Oberflaeche neu aufbauen."""
+        """Sprache umstellen - die Texte werden an Ort und Stelle ausgetauscht."""
         if code == _.language:
             return
         if self._busy():
@@ -3613,7 +3653,7 @@ class ToolboxApp:
         settings = load_config()
         settings["language"] = code
         save_config(settings)
-        self._rebuild()
+        self._switch(self._refresh_texts)
 
     def _on_theme_toggled(self):
         self.set_theme("dark" if self.dark_var.get() else "light")
@@ -3633,7 +3673,7 @@ class ToolboxApp:
         settings = load_config()
         settings["theme"] = CURRENT_THEME
         save_config(settings)
-        self._rebuild()
+        self._switch(self._refresh_colors)
 
     def module(self, key):
         """Modul-Instanz holen (baut die Seite bei Bedarf auf)."""

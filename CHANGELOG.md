@@ -11,6 +11,19 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 ### Behoben
 
+- **Sprach- oder Farbwechsel verwarf die Inhalte aller Module.** Beide
+  Wechsel bauten die ganze Oberfläche neu auf. Wer etwa nach einer langen
+  Dublettensuche auf „Dunkel“ klickte oder die Sprache umstellte, war das
+  Ergebnis los, ebenso die Bilder im Vergleich, die Liste des
+  Format-Konverters und alle eingegebenen Ordner. Jetzt werden nur Texte und
+  Farben an Ort und Stelle ausgetauscht. Alles andere bleibt, wo es ist,
+  samt der geöffneten Seite und der letzten Statusmeldung, die nur die
+  Sprache wechselt.
+- **Die Seitenleiste änderte ihre Breite mit der Sprache.** Seit 1.0.2 behielt
+  sie nach dem Vermessen der Startgröße die Breite ihres Inhalts, je nach
+  Sprache 236 oder 249 statt 250 Pixel. Nach einem Sprachwechsel fiel die
+  Mindestbreite des Fensters dadurch bis zu 13 Pixel zu groß aus.
+
 - **Englische Oberfläche: Einige Beschriftungen blieben deutsch.** Die Knöpfe
   neben den Ordner- und Dateifeldern hießen weiter „Durchsuchen ...“, über
   den Bildern im Bild-Vergleich stand „LINKES BILD“ und „RECHTES BILD“, und in
