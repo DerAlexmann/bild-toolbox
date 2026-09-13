@@ -132,41 +132,7 @@ def test_zerstoerte_widgets_fallen_heraus(toolbox, verzeichnis):
 # -- mit Fenster ---------------------------------------------------------------
 
 
-@pytest.fixture
-def fenster(toolbox, monkeypatch, sprache):
-    """Baut Hauptfenster ohne Einstellungsdatei und raeumt sie danach weg."""
-    tk = toolbox.tk
-    monkeypatch.setattr(toolbox, "load_config", dict)
-    monkeypatch.setattr(toolbox, "save_config", lambda _daten: True)
-    monkeypatch.setattr(toolbox, "startup_theme", lambda: "light")
-    offen = []
-
-    def bauen(code):
-        monkeypatch.setattr(toolbox, "startup_language", lambda: code)
-        try:
-            wurzel = tk.Tk()
-        except tk.TclError as exc:                  # kein Bildschirm vorhanden
-            pytest.skip(f"kein Fenster moeglich: {exc}")
-        try:
-            app = toolbox.ToolboxApp(wurzel)
-        except Exception:
-            wurzel.destroy()
-            raise
-        offen.append(app)
-        for cls in app.module_classes:              # jede Seite einmal bauen
-            app.module(cls.key)
-        wurzel.update()
-        return wurzel, app
-
-    yield bauen
-    # Ueber close() statt destroy(): Das haelt auch die geplanten Nachlaeufer
-    # an. Sonst liefen sie im naechsten Fenster ins Leere, und Tcl meldete
-    # "invalid command name".
-    for app in offen:
-        try:
-            app.close()
-        except tk.TclError:                         # schon im Test geschlossen
-            pass
+# Die Vorrichtung "fenster" steht in conftest.py - der Farbwechsel nutzt sie auch.
 
 
 def alle_texte(wurzel):

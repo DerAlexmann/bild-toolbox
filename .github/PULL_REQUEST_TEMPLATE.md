@@ -20,6 +20,7 @@ Behebt #
 - [ ] Neue oder geänderte Texte sind über `_( ... )` geführt, Beschriftungen von Widgets über `set_text()` gesetzt
 - [ ] Platzhalter in geschweiften Klammern sind in allen Sprachen unverändert
 - [ ] Neue Farben stehen in **allen** Paletten in `THEMES`
+- [ ] Tk-Widgets stammen von den eigenen Klassen (`Frame`, `Label` …), nicht direkt von `tk.`
 
 ## Getestet unter
 

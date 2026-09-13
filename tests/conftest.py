@@ -36,3 +36,49 @@ def toolbox():
     sys.modules["bild_toolbox"] = module
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture
+def fenster(toolbox, monkeypatch):
+    """Baut Hauptfenster ohne Einstellungsdatei und raeumt sie danach weg.
+
+    ``fenster(sprache, schema)`` liefert ``(wurzel, app)``; jede Seite ist
+    dabei schon einmal gebaut. Sprache und Farbschema stehen hinterher wieder
+    wie vorher. Ohne Bildschirm - etwa auf den Linux-Laeufern der CI - wird
+    der Test uebersprungen.
+    """
+    tk = toolbox.tk
+    sprache_vorher, schema_vorher = toolbox._.language, toolbox.CURRENT_THEME
+    monkeypatch.setattr(toolbox, "load_config", dict)
+    monkeypatch.setattr(toolbox, "save_config", lambda _daten: True)
+    offen = []
+
+    def bauen(sprache="de", schema="light"):
+        monkeypatch.setattr(toolbox, "startup_language", lambda: sprache)
+        monkeypatch.setattr(toolbox, "startup_theme", lambda: schema)
+        try:
+            wurzel = tk.Tk()
+        except tk.TclError as exc:                  # kein Bildschirm vorhanden
+            pytest.skip(f"kein Fenster moeglich: {exc}")
+        try:
+            app = toolbox.ToolboxApp(wurzel)
+        except Exception:
+            wurzel.destroy()
+            raise
+        offen.append(app)
+        for cls in app.module_classes:              # jede Seite einmal bauen
+            app.module(cls.key)
+        wurzel.update()
+        return wurzel, app
+
+    yield bauen
+    # Ueber close() statt destroy(): Das haelt auch die geplanten Nachlaeufer
+    # an. Sonst liefen sie im naechsten Fenster ins Leere, und Tcl meldete
+    # "invalid command name".
+    for app in offen:
+        try:
+            app.close()
+        except tk.TclError:                         # schon im Test geschlossen
+            pass
+    toolbox._.language = sprache_vorher
+    toolbox.apply_theme(schema_vorher)

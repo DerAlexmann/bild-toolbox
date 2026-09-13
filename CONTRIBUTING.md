@@ -67,7 +67,7 @@ Grober Aufbau der Datei von oben nach unten:
 | Beschriftungen | `set_text()`, `refresh_texts()` – Texte, die einen Sprachwechsel mitmachen, ohne dass die Oberfläche neu gebaut wird |
 | Fensterlage | `window_placement()` – Startgröße aus dem gemessenen Platzbedarf, gemerkte Größe und Lage, Rückfall bei abgestecktem Monitor |
 | Hilfsfunktionen | `human_size`, `md5_of`, `average_hash`, `iter_images` … |
-| Bausteine der Oberfläche | `FlatButton`, `make_card`, `NavButton` … |
+| Bausteine der Oberfläche | `Themed` mit `Frame`, `Label` … (Tk-Widgets, die sich ihre Farbrolle merken), `FlatButton`, `make_card`, `NavButton` … |
 | `Module` | Basisklasse, danach je ein Modul pro Werkzeug |
 | `ToolboxApp` | Hauptfenster, Navigation, Tastenkürzel |
 | `TRANSLATIONS` | Sprachtabelle, ganz am Ende |
@@ -76,6 +76,10 @@ Grober Aufbau der Datei von oben nach unten:
 
 - Schreibweise wie im Rest der Datei: vier Leerzeichen Einrückung, Zeilen bis
   100 Zeichen, sprechende deutsche Bezeichner in Kommentaren.
+- Tk-Widgets mit den Klassen der Bild-Toolbox bauen (`Frame`, `Label`,
+  `Checkbutton` … statt `tk.Frame` …) und Farben aus der Palette nehmen
+  (`bg=CARD`). Nur so merken sie sich ihre Farbrolle und machen einen Wechsel
+  des Farbschemas mit. Vergessene Stellen meldet `tests/test_farbwechsel.py`.
 - Neue Abhängigkeiten nur, wenn es gar nicht anders geht – und dann **optional**
   über ein `HAS_...`-Flag, damit das Programm ohne sie weiterläuft.
 - Lange Arbeiten gehören in einen Thread und melden ihr Ergebnis über
