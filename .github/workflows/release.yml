@@ -72,10 +72,20 @@ jobs:
           Stop-Process -Id $p.Id -Force
           Write-Output "EXE laeuft."
 
+      - name: Pruefsumme
+        # Die SHA-256 haengt als SHA256SUMS.txt am Release: Wer die EXE laedt,
+        # kann sie vor dem ersten Start vergleichen - sie ist nicht signiert.
+        run: |
+          $h = (Get-FileHash "dist\Bild-Toolbox.exe" -Algorithm SHA256).Hash
+          Write-Output "SHA-256: $h"
+          "$h  Bild-Toolbox.exe" | Out-File -Encoding ascii "dist\SHA256SUMS.txt"
+
       - uses: actions/upload-artifact@v7
         with:
           name: windows-exe
-          path: dist/Bild-Toolbox.exe
+          path: |
+            dist/Bild-Toolbox.exe
+            dist/SHA256SUMS.txt
 
   release:
     name: Release veroeffentlichen
@@ -94,3 +104,4 @@ jobs:
           files: |
             artefakte/quellpaket/*.zip
             artefakte/windows-exe/Bild-Toolbox.exe
+            artefakte/windows-exe/SHA256SUMS.txt

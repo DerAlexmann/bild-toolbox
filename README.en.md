@@ -73,6 +73,18 @@ Switchable at runtime, bottom left in the sidebar.
 
 ## Installation
 
+### As a program (Windows)
+
+Download `Bild-Toolbox.exe` from the [releases](../../releases) and run it. Python does **not**
+have to be installed and all optional extras are included. Nothing is installed; the settings
+file appears next to the EXE. If you prefer the script, the requirements follow right below.
+
+> **On first start**: the executable is not signed, so Windows SmartScreen asks once – "More
+> info" → "Run anyway". Antivirus software also tends to hold on to a freshly downloaded,
+> unknown file for a few seconds while it scans it; starting the program during that time may
+> fail with "Access denied". Wait a moment and start it again. To be on the safe side, compare
+> the SHA-256 checksum from the release notes first.
+
 ### Requirements
 
 - **Python 3.9 or newer** ([python.org](https://www.python.org/downloads/)) – on Windows, tick

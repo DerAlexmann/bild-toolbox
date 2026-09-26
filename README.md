@@ -69,6 +69,20 @@ Umschaltbar zur Laufzeit, unten links in der Seitenleiste.
 
 ## Installation
 
+### Als Programm (Windows)
+
+`Bild-Toolbox.exe` aus den [Releases](../../releases) herunterladen und starten. Python muss
+dafür **nicht** installiert sein, alle optionalen Zusatzmodule sind enthalten. Es wird nichts
+installiert; die Einstellungsdatei entsteht neben der EXE. Wer lieber das Skript nutzt, findet
+die Voraussetzungen gleich darunter.
+
+> **Beim ersten Start**: Die EXE ist nicht signiert. Windows SmartScreen fragt deshalb
+> einmalig nach – „Weitere Informationen“ → „Trotzdem ausführen“. Auch ein Virenschutz hält
+> eine frisch heruntergeladene, unbekannte Datei gern für ein paar Sekunden fest, während er
+> sie prüft; ein Startversuch in dieser Zeit kann mit „Zugriff verweigert“ abbrechen. Einfach
+> kurz warten und erneut starten. Wer sichergehen will, vergleicht vorher die
+> SHA-256-Prüfsumme aus den Release-Notizen.
+
 ### Voraussetzungen
 
 - **Python 3.9 oder neuer** ([python.org](https://www.python.org/downloads/)) – unter Windows
