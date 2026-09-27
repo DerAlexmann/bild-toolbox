@@ -204,6 +204,9 @@ python -m pytest        # Tests (Übersetzungen, Themes, Modulregistrierung)
 Die Tests sind bewusst GUI-frei: Sie laden `Bild-Toolbox.pyw` als Modul und prüfen die
 Datenstrukturen, ohne ein Fenster zu öffnen.
 
+Das Programmsymbol `bild_toolbox.ico` lässt sich mit `python icon_erzeugen.py` neu erzeugen;
+dafür wird Pillow gebraucht. Die EXE trägt es in sich, das Skript nimmt die Datei daneben.
+
 ---
 
 ## Mitwirken

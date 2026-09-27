@@ -14,6 +14,9 @@ from pathlib import Path
 import pytest
 
 QUELLE = Path(__file__).resolve().parent.parent / "Bild-Toolbox.pyw"
+SYMBOL = QUELLE.parent / "bild_toolbox.ico"
+RELEASE = QUELLE.parent / ".github" / "workflows" / "release.yml"
+SYMBOLGROESSEN = {16, 24, 32, 48, 64, 128, 256}
 
 
 @pytest.fixture(scope="module")
@@ -65,3 +68,43 @@ def test_register_ueberlebt_fehlendes_paket(toolbox, monkeypatch):
     monkeypatch.setattr(toolbox, "pillow_heif", None)
     assert toolbox._register("register_heif_opener") is False
     assert toolbox._register("gibt_es_nicht") is False
+
+
+def test_programmsymbol_liegt_im_projekt():
+    # Ohne die .ico baut der Release-Job keine EXE mit Symbol, und das direkt
+    # gestartete Skript bekaeme wieder die Feder von Tk.
+    assert SYMBOL.is_file(), (
+        f"{SYMBOL.name} fehlt - neu erzeugen mit: python icon_erzeugen.py")
+
+
+def test_programmsymbol_bringt_alle_groessen_mit():
+    # Windows sucht sich je nach Ansicht eine Groesse aus. Fehlt sie, rechnet
+    # es selbst herunter, und das Symbol wird in der Taskleiste unsauber.
+    from PIL import Image
+    with Image.open(SYMBOL) as bild:
+        vorhanden = {breite for breite, hoehe in bild.info["sizes"]}
+    assert SYMBOLGROESSEN <= vorhanden, f"fehlende Groessen: {SYMBOLGROESSEN - vorhanden}"
+
+
+def test_symboldatei_heisst_wie_im_quelltext(toolbox):
+    assert toolbox.ICON_NAME == SYMBOL.name
+
+
+def test_release_baut_die_exe_mit_symbol():
+    text = RELEASE.read_text(encoding="utf-8")
+    assert "--icon bild_toolbox.ico" in text, (
+        "Ohne --icon traegt die EXE das Standardsymbol von PyInstaller.")
+    assert re.search(r"^\s*cp .*bild_toolbox\.ico", text, re.MULTILINE), (
+        "Das Quellpaket braucht die .ico, sonst zeigt das Skript kein Symbol.")
+
+
+def test_symbol_uebersteht_eine_ablehnung_von_tk(toolbox, monkeypatch):
+    # Tk lehnt eine .ico ab, wenn es mit dem Format nichts anfangen kann. Das
+    # Programm laeuft dann ohne eigenes Symbol weiter, statt beim Start zu
+    # scheitern.
+    class Fenster:
+        def iconbitmap(self, **_):
+            raise toolbox.tk.TclError("kein Symbol")
+
+    monkeypatch.setattr(toolbox.sys, "platform", "win32")
+    toolbox.set_window_icon(Fenster())

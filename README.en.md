@@ -202,6 +202,9 @@ python -m pytest        # tests (translations, themes, module registry)
 The tests are deliberately GUI-free: they import `Bild-Toolbox.pyw` as a module and check the
 data structures without opening a window.
 
+The program icon `bild_toolbox.ico` can be recreated with `python icon_erzeugen.py`, which needs
+Pillow. The EXE carries it inside; the script picks up the file next to it.
+
 ---
 
 ## Contributing

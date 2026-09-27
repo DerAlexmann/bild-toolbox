@@ -26,8 +26,8 @@ jobs:
       - name: ZIP packen
         run: |
           mkdir -p out/Bild-Toolbox
-          cp Bild-Toolbox.pyw README.md README.en.md LICENSE NOTICE CHANGELOG.md \
-             requirements.txt requirements-optional.txt out/Bild-Toolbox/
+          cp Bild-Toolbox.pyw bild_toolbox.ico README.md README.en.md LICENSE NOTICE \
+             CHANGELOG.md requirements.txt requirements-optional.txt out/Bild-Toolbox/
           cd out && zip -r "Bild-Toolbox-${GITHUB_REF_NAME}-quellen.zip" Bild-Toolbox
 
       - uses: actions/upload-artifact@v7
@@ -59,6 +59,7 @@ jobs:
         run: >
           pyinstaller --noconfirm --onefile --windowed
           --name "Bild-Toolbox"
+          --icon bild_toolbox.ico
           --collect-all pillow_heif
           Bild-Toolbox.pyw
 
