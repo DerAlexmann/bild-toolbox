@@ -9,6 +9,15 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+### Hinzugefügt
+
+- **Ein eigenes Programmsymbol.** Bisher trug die EXE das Standardsymbol von
+  PyInstaller und das Fenster die Feder von Tk. Jetzt zeigen Explorer,
+  Taskleiste und Titelleiste einen Stapel Bilder im Akzentblau des
+  Farbschemas. Das Symbol liegt als `bild_toolbox.ico` bei und entsteht mit
+  `python icon_erzeugen.py` neu; das Skript nimmt die Datei neben sich, die
+  EXE trägt sie in sich.
+
 ## [1.0.5] – 2026-09-13
 
 ### Geändert

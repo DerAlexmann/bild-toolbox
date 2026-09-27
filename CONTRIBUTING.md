@@ -66,6 +66,7 @@ Grober Aufbau der Datei von oben nach unten:
 | Sprachumschaltung | `Translator`, Konfiguration lesen und schreiben |
 | Beschriftungen | `set_text()`, `refresh_texts()` – Texte, die einen Sprachwechsel mitmachen, ohne dass die Oberfläche neu gebaut wird |
 | Fensterlage | `window_placement()` – Startgröße aus dem gemessenen Platzbedarf, gemerkte Größe und Lage, Rückfall bei abgestecktem Monitor |
+| Programmsymbol | `set_window_icon()` – legt `bild_toolbox.ico` bzw. das Symbol der EXE in die Titelleiste |
 | Hilfsfunktionen | `human_size`, `md5_of`, `average_hash`, `iter_images` … |
 | Bausteine der Oberfläche | `Themed` mit `Frame`, `Label` … (Tk-Widgets, die sich ihre Farbrolle merken), `FlatButton`, `make_card`, `NavButton` … |
 | `Module` | Basisklasse, danach je ein Modul pro Werkzeug |
@@ -156,7 +157,8 @@ Windows-EXE mit PyInstaller. Lokal geht das so:
 
 ```bash
 pip install pyinstaller
-pyinstaller --noconfirm --onefile --windowed --name "Bild-Toolbox"             --collect-all pillow_heif Bild-Toolbox.pyw
+pyinstaller --noconfirm --onefile --windowed --name "Bild-Toolbox" \
+  --icon bild_toolbox.ico --collect-all pillow_heif Bild-Toolbox.pyw
 ```
 
 > [!IMPORTANT]
@@ -168,6 +170,13 @@ pyinstaller --noconfirm --onefile --windowed --name "Bild-Toolbox"             -
 > steht `import pillow_heif` oben in der Datei als normale Zeile.
 > `tests/test_verpackung.py` wacht darüber. `--collect-all pillow_heif` ist
 > zusätzliche Absicherung und kostet nichts.
+
+> [!NOTE]
+> **Das Programmsymbol** `bild_toolbox.ico` liegt fertig im Projekt und entsteht bei
+> Bedarf neu mit `python icon_erzeugen.py` (braucht Pillow). `--icon` trägt es in die
+> EXE ein, aus der Windows es liest; wird das Skript direkt gestartet, holt
+> `set_window_icon()` die Datei daneben. Fehlt sie, bleibt es bei der Feder von Tk –
+> das Programm läuft unverändert weiter.
 
 > [!NOTE]
 > Im `--onefile`-Modus entpackt PyInstaller das Programm bei jedem Start in

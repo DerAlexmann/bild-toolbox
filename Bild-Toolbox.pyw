@@ -632,6 +632,34 @@ def point_on_screen(root, x, y):
     return 0 <= x < root.winfo_screenwidth() and 0 <= y < root.winfo_screenheight()
 
 
+ICON_NAME = "bild_toolbox.ico"
+
+
+def set_window_icon(window):
+    """Programmsymbol in die Titelleiste aller Fenster - statt der Tk-Feder.
+
+    Die EXE traegt das Symbol in sich, Windows liest es direkt aus ihr. Das
+    Skript nimmt die .ico daneben, falls vorhanden; sonst bleibt es bei der
+    Voreinstellung von Tk. Der Ordner wird hier eigens bestimmt und nicht von
+    app_folder() geholt: das weicht bei einem schreibgeschuetzten Ordner auf
+    das Benutzerverzeichnis aus, wo keine .ico liegt.
+    """
+    if sys.platform != "win32":
+        return
+    if getattr(sys, "frozen", False):
+        source = sys.executable
+    else:
+        try:
+            source = os.path.join(os.path.dirname(os.path.abspath(__file__)), ICON_NAME)
+        except NameError:                       # z. B. interaktiv ausgefuehrt
+            return
+    if os.path.isfile(source):
+        try:
+            window.iconbitmap(default=source)
+        except tk.TclError:
+            pass
+
+
 def pause_drawing(window_id):
     """Haelt das Zeichnen eines Fensters samt Inhalt an; liefert die Fortsetzung.
 
@@ -3251,6 +3279,7 @@ class ToolboxApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"{APP_NAME} {APP_VERSION}")
+        set_window_icon(self.root)
         # Unsichtbar aufbauen - gezeigt wird erst, wenn Groesse und Lage feststehen
         self.root.withdraw()
 
