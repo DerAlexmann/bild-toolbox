@@ -58,6 +58,7 @@ Switchable at runtime, bottom left in the sidebar.
 | 🏷 **Batch rename** | Rename whole folders by pattern – counter, original name, date and image size. |
 | 📊 **Statistics** | Break down formats, resolutions and file sizes of a folder. |
 | 🔄 **Format converter** | JPEG, PNG, WebP, AVIF, BMP, GIF, TIFF, ICO and PPM – single files or batches. |
+| 🗜 **Compress** | Save images smaller – by quality level or down to a target size in KB, optionally with an edge limit and without metadata. |
 | 🖥 **Icon extractor** | Pull every icon size out of EXE, DLL and image files and save it as ICO or PNG. |
 | ℹ **Info & help** | Short description of every module and the status of the optional libraries. |
 
@@ -65,7 +66,7 @@ Switchable at runtime, bottom left in the sidebar.
 
 - Light and dark colour scheme, switchable at runtime
 - Bilingual interface (German / English)
-- Keyboard: `Ctrl+1` … `Ctrl+9` jump straight to a module, `Esc` returns to the home screen
+- Keyboard: `Ctrl+1` … `Ctrl+9` and `Ctrl+0` jump straight to a module, `Esc` returns to the home screen
 - Optional recycle-bin deletion (via `send2trash`) instead of permanent removal
 - Supported formats: JPG, JPEG, PNG, BMP, GIF, WebP, AVIF, TIF, TIFF, ICO, JFIF, HEIC, HEIF, PPM
 
