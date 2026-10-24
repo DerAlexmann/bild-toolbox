@@ -1,3 +1,6 @@
 # Pflichtabhängigkeit / required dependency
-# Ohne Pillow startet die Bild-Toolbox nicht.
-Pillow>=9.0
+# Ohne Pillow startet die Bild-Toolbox nicht. 9.1 ist die echte Untergrenze:
+# Dort kamen die Enums (Image.Resampling ...), die der Quelltext benutzt.
+# Pillow 9.1 is the real floor - that release introduced the enums
+# (Image.Resampling ...) the source relies on.
+Pillow>=9.1

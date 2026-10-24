@@ -16,7 +16,12 @@ import pytest
 QUELLE = Path(__file__).resolve().parent.parent / "Bild-Toolbox.pyw"
 SYMBOL = QUELLE.parent / "bild_toolbox.ico"
 RELEASE = QUELLE.parent / ".github" / "workflows" / "release.yml"
+ANFORDERUNGEN = QUELLE.parent / "requirements.txt"
 SYMBOLGROESSEN = {16, 24, 32, 48, 64, 128, 256}
+
+# Image.Resampling, Image.Palette und die uebrigen Enums kamen mit Pillow
+# 9.1.0 (01.04.2022); vorher hiessen die Konstanten Image.LANCZOS usw.
+ENUMS_SEIT = (9, 1)
 
 
 @pytest.fixture(scope="module")
@@ -68,6 +73,25 @@ def test_register_ueberlebt_fehlendes_paket(toolbox, monkeypatch):
     monkeypatch.setattr(toolbox, "pillow_heif", None)
     assert toolbox._register("register_heif_opener") is False
     assert toolbox._register("gibt_es_nicht") is False
+
+
+def test_pillow_untergrenze_passt_zum_quelltext():
+    # Eine zu kleine Untergrenze faellt beim Entwickeln nie auf - pip holt
+    # immer die neueste passende Version. Bemerken wuerde es nur, wer genau
+    # die zugesagte Mindestversion installiert: Das Programm braechte beim
+    # ersten Vorschaubild einen AttributeError.
+    benutzte_enums = sorted(set(re.findall(
+        r"Image\.(Resampling|Palette|Dither|Quantize)\.", QUELLE.read_text(encoding="utf-8"))))
+    treffer = re.search(r"^Pillow>=(\d+)\.(\d+)", ANFORDERUNGEN.read_text(encoding="utf-8"),
+                        re.MULTILINE)
+    assert treffer, "requirements.txt nennt keine Untergrenze fuer Pillow"
+
+    gefordert = (int(treffer[1]), int(treffer[2]))
+    if benutzte_enums:
+        assert gefordert >= ENUMS_SEIT, (
+            f"Der Quelltext benutzt Image.{{{','.join(benutzte_enums)}}}, die es erst ab "
+            f"Pillow {ENUMS_SEIT[0]}.{ENUMS_SEIT[1]} gibt - requirements.txt verlangt aber "
+            f"nur {gefordert[0]}.{gefordert[1]}.")
 
 
 def test_programmsymbol_liegt_im_projekt():
