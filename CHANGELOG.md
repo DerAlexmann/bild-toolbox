@@ -32,6 +32,14 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
   Zifferntasten voll; `Strg+1` bis `Strg+9` und `Strg+0` führen weiterhin der
   Reihe nach durch die Seitenleiste.
 
+### Behoben
+
+- **Die angegebene Mindestversion von Pillow war zu klein.** `requirements.txt`
+  nannte `Pillow>=9.0`, das Programm benutzt aber `Image.Resampling` – und diese
+  Schreibweise gibt es erst ab Pillow 9.1. Wer genau 9.0 installierte, bekam beim
+  ersten Vorschaubild einen Abbruch. Die Untergrenze steht jetzt auf 9.1, und ein
+  Test in `tests/test_verpackung.py` vergleicht sie künftig mit dem Quelltext.
+
 ## [1.0.5] – 2026-09-13
 
 ### Geändert
