@@ -21,7 +21,15 @@ start; you can switch it at any time in the sidebar.
 ![Home screen with every module as a tile](docs/screenshots/start.png)
 
 <details>
-<summary><b>More views</b> – duplicate finder, format converter, dark theme</summary>
+<summary><b>More views</b> – compress, duplicate finder, format converter, dark theme</summary>
+
+### Compress
+
+Either pick a quality level or set a target size in KB – the module then finds the
+highest quality that still fits underneath it. The edge limit only shrinks images,
+it never enlarges them.
+
+![The compress module with a target size and a filled batch list](docs/screenshots/komprimieren.png)
 
 ### Duplicate finder
 

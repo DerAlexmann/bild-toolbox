@@ -182,7 +182,7 @@ atexit.register(logging.shutdown)
 # --------------------------------------------------------------------------
 
 APP_NAME = "Bild-Toolbox"
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.1.0"
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".avif",
                     ".tif", ".tiff", ".ico", ".jfif", ".heic", ".heif", ".ppm")
