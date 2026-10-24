@@ -53,6 +53,7 @@ Umschaltbar zur Laufzeit, unten links in der Seitenleiste.
 | 🏷 **Batch-Umbenennung** | Ganze Ordner nach einem Muster umbenennen – mit Zähler, Originalname, Datum und Bildgröße. |
 | 📊 **Statistiken** | Formate, Auflösungen und Dateigrößen eines Ordners auswerten. |
 | 🔄 **Format-Konverter** | JPEG, PNG, WebP, AVIF, BMP, GIF, TIFF, ICO und PPM – einzeln oder als Stapelverarbeitung. |
+| 🗜 **Komprimieren** | Bilder kleiner speichern – nach Qualitätsstufe oder bis zu einer Zielgröße in KB, auf Wunsch mit Grenze für die Kantenlänge und ohne Metadaten. |
 | 🖥 **Icon-Extraktor** | Alle Icon-Größen aus EXE-, DLL- und Bilddateien holen und als ICO oder PNG sichern. |
 | ℹ **Info & Hilfe** | Kurzbeschreibung aller Module und Status der optionalen Bibliotheken. |
 
@@ -61,7 +62,7 @@ Umschaltbar zur Laufzeit, unten links in der Seitenleiste.
 - Helles und dunkles Farbschema, umschaltbar zur Laufzeit
 - Zweisprachige Oberfläche (Deutsch / Englisch), Sprache wird beim ersten Start
   aus dem System übernommen
-- Tastatur: `Strg+1` … `Strg+9` wechseln direkt zwischen den Modulen, `Esc` führt zurück zum Start
+- Tastatur: `Strg+1` … `Strg+9` und `Strg+0` wechseln direkt zwischen den Modulen, `Esc` führt zurück zum Start
 - Löschen wahlweise in den Papierkorb (mit `send2trash`) statt endgültig
 - Unterstützte Formate: JPG, JPEG, PNG, BMP, GIF, WebP, AVIF, TIF, TIFF, ICO, JFIF, HEIC, HEIF, PPM
 

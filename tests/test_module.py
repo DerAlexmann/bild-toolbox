@@ -38,10 +38,12 @@ def test_arbeitsmodule_haben_eine_beschreibung(toolbox):
 
 
 def test_alle_module_sind_per_tastenkuerzel_erreichbar(toolbox):
-    # _bind_keys() belegt Strg+1 bis Strg+9 mit module_classes[:9].
-    assert len(module_liste(toolbox)) <= 10, (
-        "Ab dem zehnten Arbeitsmodul ist ein Modul nicht mehr per Strg+Zahl erreichbar - "
-        "_bind_keys() anpassen oder die Reihenfolge pruefen."
+    # _bind_keys() belegt Strg+1 bis Strg+9 und Strg+0 mit module_classes[:10].
+    # "Info & Hilfe" steht bewusst hinten und braucht kein Kuerzel.
+    mit_kuerzel = [cls for cls in module_liste(toolbox) if cls.key != "info"]
+    assert len(mit_kuerzel) <= 10, (
+        "Mehr Arbeitsmodule als Zifferntasten - mit dem elften ist eines nicht mehr "
+        "per Strg+Zahl erreichbar. _bind_keys() braucht dann ein anderes Kuerzel."
     )
 
 

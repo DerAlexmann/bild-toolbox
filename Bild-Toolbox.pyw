@@ -18,6 +18,7 @@ Optional :  pip install send2trash icoextract pillow-heif
 
 import atexit
 import hashlib
+import io
 import json
 import locale
 import logging
@@ -40,11 +41,11 @@ from tkinter import filedialog, messagebox, ttk
 # --------------------------------------------------------------------------
 
 try:
-    from PIL import Image, ImageTk, UnidentifiedImageError
+    from PIL import Image, ImageOps, ImageTk, UnidentifiedImageError
     HAS_PIL = True
 except ImportError:                                     # ohne Pillow geht nichts
     HAS_PIL = False
-    Image = ImageTk = None
+    Image = ImageOps = ImageTk = None
     UnidentifiedImageError = Exception
 
 
@@ -711,6 +712,21 @@ def unique_path(dest):
     while os.path.exists(f"{base}_{i}{ext}"):
         i += 1
     return f"{base}_{i}{ext}"
+
+
+def same_file(first, second):
+    """Zeigen zwei Pfade auf dieselbe Datei?
+
+    Ein Vergleich der Zeichenketten genuegt nicht: Unter Windows zaehlt die
+    Gross- und Kleinschreibung nicht, und ueber Verknuepfungen oder Kurznamen
+    kann dieselbe Datei ganz anders heissen. samefile() beantwortet das
+    sicher, braucht aber beide Dateien - sonst bleibt der Namensvergleich.
+    """
+    try:
+        return os.path.samefile(first, second)
+    except OSError:                     # eine der beiden gibt es noch nicht
+        return (os.path.normcase(os.path.abspath(first))
+                == os.path.normcase(os.path.abspath(second)))
 
 
 def open_path(path):
@@ -2982,6 +2998,565 @@ class ConverterModule(Module):
 
 
 # --------------------------------------------------------------------------
+# Modul: Komprimieren
+# --------------------------------------------------------------------------
+
+# Die Namen sind die von Pillow (Image.format) - bei WebP also WEBP.
+QUALITY_FORMATS = ("JPEG", "WEBP", "AVIF")      # Qualitaetszahl wirkt
+LOSSLESS_FORMATS = ("PNG", "TIFF")              # kleiner, ohne Bildpunkte zu aendern
+
+# Fuer die Zielgroessensuche: Jeder Schritt kodiert das ganze Bild noch
+# einmal. Bei JPEG kostet das Zehntelsekunden, bei AVIF rund eine Sekunde je
+# Durchlauf - dort bleibt es deshalb bei der eingestellten Qualitaet.
+TARGET_FORMATS = ("JPEG", "WEBP")
+
+QUALITY_MIN, QUALITY_MAX = 20, 95
+TARGET_STEPS = 7                  # Schritte der Suche nach dem ersten Versuch
+METADATA_KEYS = ("exif", "icc_profile")
+
+
+class UnsupportedFormat(Exception):
+    """Format, in dem sich nichts einsparen laesst - etwa BMP, GIF oder PPM."""
+
+
+class MultiFrameImage(Exception):
+    """Animation oder mehrseitige Datei - alles ausser dem ersten Bild ginge verloren."""
+
+
+def metadata_of(image):
+    """EXIF und Farbprofil, soweit vorhanden - zum Mitspeichern.
+
+    Gelesen wird nur, was Pillow in image.info legt. Bei TIFF steht die EXIF
+    nicht darin; sie aus getexif() zu holen, waere keine Loesung - die
+    Struktur-Tags der Quelle (Bildbreite, Datenmenge) wuerden mitgeschrieben
+    und machten eine verkleinerte Datei unlesbar.
+    """
+    return {key: image.info[key] for key in METADATA_KEYS if image.info.get(key)}
+
+
+def save_options(fmt, quality, metadata):
+    """Speicheroptionen fuer ein Format.
+
+    Pillow schreibt EXIF und Farbprofil nur mit, wenn man sie ausdruecklich
+    uebergibt - ohne metadata fallen sie also weg. optimize und progressive
+    kosten bei JPEG wenige Hundertstel und bringen rund fuenf Prozent.
+    """
+    options = dict(metadata)
+    if fmt in QUALITY_FORMATS:
+        options["quality"] = quality
+    if fmt == "JPEG":
+        options.update(optimize=True, progressive=True)
+    elif fmt == "PNG":
+        options["optimize"] = True
+    elif fmt == "TIFF":
+        options["compression"] = "tiff_lzw"
+    return options
+
+
+def encoded_size(image, fmt, quality, metadata):
+    """Groesse in Byte, die dieses Bild mit dieser Qualitaet haette."""
+    buffer = io.BytesIO()
+    image.save(buffer, fmt, **save_options(fmt, quality, metadata))
+    return buffer.tell()
+
+
+def quality_for_target(image, fmt, limit, metadata, steps=TARGET_STEPS):
+    """Hoechste Qualitaet, mit der das Bild unter die Grenze passt.
+
+    Zuerst ein Versuch mit der besten Qualitaet - passt die schon, ist nach
+    einem Durchlauf Schluss. Sonst halbiert eine Binaersuche den Bereich,
+    hoechstens ``steps`` Mal. Sieben Halbierungen reichen fuer die 75 Werte
+    von QUALITY_MIN bis QUALITY_MAX - 1 genau aus; mit sechs blieben zwei
+    Kandidaten uebrig, und das Ergebnis laege gelegentlich einen Punkt unter
+    der besten passenden Qualitaet.
+
+    Liefert (Qualitaet, Groesse, erreicht). Erreicht ist False, wenn selbst
+    die kleinste Qualitaet die Grenze nicht haelt: dann wird mit QUALITY_MIN
+    gespeichert und die Oberflaeche sagt es, statt das Bild unbrauchbar zu
+    rechnen.
+    """
+    size = encoded_size(image, fmt, QUALITY_MAX, metadata)
+    if size <= limit:
+        return QUALITY_MAX, size, True
+
+    best = None
+    low, high = QUALITY_MIN, QUALITY_MAX - 1
+    for _step in range(steps):
+        if low > high:
+            break
+        middle = (low + high) // 2
+        size = encoded_size(image, fmt, middle, metadata)
+        if size <= limit:
+            best = (middle, size)
+            low = middle + 1
+        else:
+            high = middle - 1
+    if best:
+        return best[0], best[1], True
+    return QUALITY_MIN, encoded_size(image, fmt, QUALITY_MIN, metadata), False
+
+
+def shrink_to_edge(image, max_edge):
+    """Laengste Kante begrenzen - nur verkleinern, nie vergroessern.
+
+    Das spart am meisten, ohne an der Qualitaet zu drehen: Halbe Kantenlaenge
+    ist ein Viertel der Bildpunkte.
+    """
+    if max_edge <= 0 or max(image.size) <= max_edge:
+        return image
+    if image.mode == "P":
+        # Palettenbilder verkleinert Pillow stillschweigend mit NEAREST, das
+        # sieht grob aus. Ueber echte Farben wird es sauber - und als PNG
+        # gemessen sogar etwas kleiner als der Weg ueber die Palette.
+        image = image.convert("RGBA" if "transparency" in image.info else "RGB")
+    scale = max_edge / max(image.size)
+    size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    return image.resize(size, Image.Resampling.LANCZOS)
+
+
+def size_delta(before, after):
+    """Ersparnis in Prozent - negativ, wenn die Datei groesser geworden ist."""
+    if before <= 0:
+        return 0.0
+    return (before - after) / before * 100
+
+
+def delta_text(before, after):
+    """Ersparnis mit Vorzeichen, etwa -83 % oder +4 %.
+
+    Gerundet wird auf eine ganze Zahl, bevor das Vorzeichen dazukommt: Sonst
+    stuende bei einer Datei, die genau gleich gross geblieben ist, "-0 %".
+    """
+    return f"{round(-size_delta(before, after)):+d} %"
+
+
+def compress_file(source, dest, quality=85, target_kb=0, max_edge=0,
+                  keep_metadata=False):
+    """Ein Bild kleiner speichern, im selben Format.
+
+    Liefert (vorher, nachher, verwendete Qualitaet, Grenze erreicht). Die
+    Qualitaet ist None, wo das Format keine kennt. Ist target_kb gesetzt und
+    das Format dafuer geeignet, sucht quality_for_target() sie selbst -
+    quality bleibt dann unbenutzt. Das Format wechselt nie: Umwandeln ist
+    Sache des Format-Konverters.
+    """
+    before = os.path.getsize(source)
+    with Image.open(source) as original:
+        fmt = original.format
+        if fmt not in QUALITY_FORMATS + LOSSLESS_FORMATS:
+            raise UnsupportedFormat(fmt or "?")
+        if getattr(original, "n_frames", 1) > 1:
+            # Ein zweites Bild in der Datei - gespeichert wuerde ohne save_all
+            # nur das erste, und der Dialog meldete die fehlenden Bilder als
+            # Ersparnis. Lieber uebergehen als still verstuemmeln.
+            raise MultiFrameImage(fmt or "?")
+        if keep_metadata:
+            metadata, image = metadata_of(original), original
+        else:
+            # In der EXIF steht auch die Aufnahmerichtung. Faellt sie weg,
+            # liegt ein Hochformat aus dem Telefon hinterher quer - also
+            # vorher in die Bildpunkte rechnen.
+            metadata, image = {}, ImageOps.exif_transpose(original)
+        image = shrink_to_edge(image, max_edge)
+        reached = True
+        if target_kb > 0 and fmt in TARGET_FORMATS:
+            quality, _size, reached = quality_for_target(
+                image, fmt, target_kb * 1024, metadata)
+        image.save(dest, fmt, **save_options(fmt, quality, metadata))
+
+    after = os.path.getsize(dest)
+    if target_kb > 0 and fmt not in TARGET_FORMATS:
+        # Verlustfreie Formate lassen sich nicht auf eine Groesse rechnen -
+        # entweder passt das Ergebnis, oder die Grenze war zu eng.
+        reached = after <= target_kb * 1024
+    return before, after, quality if fmt in QUALITY_FORMATS else None, reached
+
+
+class CompressModule(Module):
+    key = "compress"
+    icon = "\U0001F5DC"
+    title = "Komprimieren"
+    subtitle = "Bilder kleiner machen - nach Qualitätsstufe oder fester Zielgröße"
+    group = "Umwandeln"
+    description = "JPEG, WebP, AVIF, PNG und TIFF - mit Zielgröße in KB, einzeln oder als Stapel."
+
+    EXTENSIONS = (".jpg", ".jpeg", ".jfif", ".png", ".webp", ".avif", ".tif", ".tiff")
+
+    def build(self):
+        self.files = []
+        self.quality = tk.IntVar(value=85)
+        self.use_target = tk.BooleanVar(value=False)
+        self.target_kb = tk.StringVar(value="500")
+        self.limit_edge = tk.BooleanVar(value=False)
+        self.max_edge = tk.StringVar(value="2000")
+        self.keep_metadata = tk.BooleanVar(value=False)
+
+        card = make_card(self.body, fill="x")
+        card_title(card, _("Komprimierung"))
+
+        quality_row = Frame(card, bg=CARD)
+        quality_row.pack(fill="x", padx=14, pady=4)
+        set_text(Label(quality_row, font=FONT_SMALL, bg=CARD, fg=MUTED, width=16,
+                       anchor="w"), _("Qualität")).pack(side="left")
+        scale = ttk.Scale(quality_row, from_=QUALITY_MIN, to=QUALITY_MAX,
+                          orient="horizontal", length=260)
+        scale.pack(side="left")
+        self.quality_label = Label(quality_row, text="85 %", bg=CARD, fg=TEXT,
+                                   font=FONT_BOLD, width=6)
+        self.quality_label.pack(side="left", padx=8)
+        scale.set(85)                       # erst jetzt - Label muss existieren
+        scale.configure(command=self._on_quality)
+        set_text(Label(quality_row, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("(wirkt bei JPEG, WebP und AVIF)")).pack(side="left")
+
+        target_row = Frame(card, bg=CARD)
+        target_row.pack(fill="x", padx=14, pady=4)
+        set_text(Checkbutton(target_row, variable=self.use_target, command=self._sync,
+                             bg=CARD, fg=TEXT, font=FONT_SMALL, activebackground=CARD,
+                             selectcolor=CARD, width=15, anchor="w"),
+                 _("Zielgröße")).pack(side="left")
+        self.target_entry = ttk.Spinbox(target_row, from_=1, to=1000000, width=8,
+                                        textvariable=self.target_kb)
+        self.target_entry.pack(side="left")
+        set_text(Label(target_row, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("KB - sucht die höchste Qualität, die noch passt "
+                   "(JPEG und WebP)")).pack(side="left", padx=8)
+
+        edge_row = Frame(card, bg=CARD)
+        edge_row.pack(fill="x", padx=14, pady=4)
+        set_text(Checkbutton(edge_row, variable=self.limit_edge, command=self._sync,
+                             bg=CARD, fg=TEXT, font=FONT_SMALL, activebackground=CARD,
+                             selectcolor=CARD, width=15, anchor="w"),
+                 _("Längste Kante")).pack(side="left")
+        self.edge_entry = ttk.Spinbox(edge_row, from_=1, to=200000, width=8,
+                                      textvariable=self.max_edge)
+        self.edge_entry.pack(side="left")
+        set_text(Label(edge_row, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("Pixel - verkleinert nur, vergrößert nie")).pack(side="left", padx=8)
+
+        meta_row = Frame(card, bg=CARD)
+        meta_row.pack(fill="x", padx=14, pady=4)
+        set_text(Checkbutton(meta_row, variable=self.keep_metadata, bg=CARD, fg=TEXT,
+                             font=FONT_SMALL, activebackground=CARD, selectcolor=CARD),
+                 _("Metadaten behalten (EXIF, Farbprofil)")).pack(side="left")
+        set_text(Label(meta_row, bg=CARD, fg=MUTED, font=FONT_SMALL),
+                 _("ohne Haken fallen sie weg - bei Fotos aus dem Telefon "
+                   "oft einige Hundert KB")).pack(side="left", padx=8)
+
+        # Eigene Zeile: Neben der Beschriftung daneben waere die Karte breiter
+        # geworden als der Inhaltsbereich im Startfenster.
+        single_row = Frame(card, bg=CARD)
+        single_row.pack(fill="x", padx=14, pady=(4, 12))
+        FlatButton(single_row, _("Einzelnes Bild komprimieren ..."), self.compress_single,
+                   kind="secondary").pack(side="right")
+
+        hint = make_card(self.body, fill="x", pady=(10, 0))
+        set_text(Label(hint, bg=CARD, fg=MUTED, font=FONT_SMALL, anchor="w",
+                       justify="left", wraplength=780),
+                 _("Jedes Neuspeichern eines verlustbehafteten Formats rechnet das Bild "
+                   "neu - ab Qualität 80 sieht man davon im Regelfall nichts, mehrfach "
+                   "hintereinander summiert es sich aber. PNG und TIFF bleiben Bildpunkt "
+                   "für Bildpunkt gleich. Die Originale werden nie überschrieben.")).pack(
+            fill="x", padx=14, pady=12)
+
+        batch = make_card(self.body, fill="both", expand=True, pady=(10, 0))
+        card_title(batch, _("Stapel"))
+        buttons = Frame(batch, bg=CARD)
+        buttons.pack(fill="x", padx=14, pady=4)
+        FlatButton(buttons, _("Dateien hinzufügen"), self.add_files).pack(side="left")
+        FlatButton(buttons, _("Ordner hinzufügen"), self.add_folder).pack(side="left", padx=6)
+        FlatButton(buttons, _("Auswahl entfernen"), self.remove_selected).pack(side="left")
+        FlatButton(buttons, _("Liste leeren"), self.clear_list).pack(side="left", padx=6)
+        self.run_btn = FlatButton(buttons, _("Stapel komprimieren"), self.start_batch,
+                                  kind="primary")
+        self.run_btn.pack(side="right")
+        self.cancel_btn = FlatButton(buttons, _("Abbrechen"), self.cancel,
+                                     state="disabled")
+        self.cancel_btn.pack(side="right", padx=6)
+
+        wrap = Frame(batch, bg=CARD)
+        wrap.pack(fill="both", expand=True, padx=14, pady=(6, 6))
+        self.listbox = Listbox(wrap, selectmode="extended", font=FONT_SMALL,
+                               bg=CARD_ALT, fg=TEXT, selectbackground=ACCENT,
+                               selectforeground=ON_ACCENT, relief="flat",
+                               highlightbackground=BORDER,
+                               highlightthickness=1, activestyle="none")
+        yscroll = ttk.Scrollbar(wrap, orient="vertical", command=self.listbox.yview)
+        self.listbox.configure(yscrollcommand=yscroll.set)
+        yscroll.pack(side="right", fill="y")
+        self.listbox.pack(side="left", fill="both", expand=True)
+
+        self.progress = ttk.Progressbar(batch, mode="determinate")
+        self.progress.pack(fill="x", padx=14, pady=(0, 4))
+        self.summary = set_text(Label(batch, bg=CARD, fg=MUTED, font=FONT_SMALL,
+                                      anchor="w"), _("Keine Dateien in der Liste."))
+        self.summary.pack(fill="x", padx=14, pady=(0, 12))
+
+        self._sync()
+
+    def _on_quality(self, value):
+        percent = int(float(value))
+        self.quality.set(percent)
+        self.quality_label.configure(text=f"{percent} %")
+
+    def _sync(self):
+        self.target_entry.configure(
+            state="normal" if self.use_target.get() else "disabled")
+        self.edge_entry.configure(
+            state="normal" if self.limit_edge.get() else "disabled")
+
+    # ------------------------------------------------------------------ Liste
+    def _file_types(self):
+        return [(_("Komprimierbare Bilder"),
+                 " ".join("*" + extension for extension in self.EXTENSIONS)),
+                (_("Alle Dateien"), "*.*")]
+
+    def add_files(self):
+        paths = filedialog.askopenfilenames(title=_("Dateien auswählen"),
+                                            filetypes=self._file_types())
+        if paths:
+            self.files.extend(paths)
+            self.refresh_list()
+
+    def add_folder(self):
+        folder = filedialog.askdirectory(title=_("Ordner mit Bildern auswählen"))
+        if not folder:
+            return
+        found = list(iter_images(folder, recursive=False, extensions=self.EXTENSIONS))
+        if not found:
+            messagebox.showinfo(_("Info"), _("Keine passenden Dateien in diesem Ordner."))
+            return
+        self.files.extend(found)
+        self.refresh_list()
+
+    def remove_selected(self):
+        for index in sorted(self.listbox.curselection(), reverse=True):
+            del self.files[index]
+        self.refresh_list()
+
+    def clear_list(self):
+        self.files = []
+        self.refresh_list()
+
+    def refresh_list(self):
+        self.listbox.delete(0, "end")
+        for path in self.files:
+            self.listbox.insert("end", os.path.basename(path))
+        count = len(self.files)
+        set_text(self.summary,
+                 _("Keine Dateien in der Liste.") if not count
+                 else _("{count} Datei(en) bereit zum Komprimieren.").format(count=count))
+
+    # --------------------------------------------------------------- Eingaben
+    def _positive_number(self, var, message):
+        """Ganzzahl > 0 aus einem Feld - None und eine Meldung, wenn sie fehlt.
+
+        OverflowError gehoert mit dazu: In das Feld laesst sich freier Text
+        tippen, und "inf" oder "1e999" scheitern erst beim int().
+        """
+        try:
+            value = int(float(var.get()))
+            if value < 1:
+                raise ValueError
+            return value
+        except (ValueError, OverflowError):
+            messagebox.showerror(_("Ungültig"), message)
+            return None
+
+    def _settings(self):
+        """Die Einstellungen als Schluesselwortargumente - None bei einer Fehleingabe."""
+        target_kb = max_edge = 0
+        if self.use_target.get():
+            target_kb = self._positive_number(
+                self.target_kb,
+                _("Bitte eine Zielgröße in KB als Ganzzahl > 0 eingeben."))
+            if target_kb is None:
+                return None
+        if self.limit_edge.get():
+            max_edge = self._positive_number(
+                self.max_edge,
+                _("Bitte eine Kantenlänge in Pixel als Ganzzahl > 0 eingeben."))
+            if max_edge is None:
+                return None
+        return {"quality": self.quality.get(), "target_kb": target_kb,
+                "max_edge": max_edge, "keep_metadata": self.keep_metadata.get()}
+
+    # --------------------------------------------------------- Einzelnes Bild
+    def compress_single(self):
+        settings = self._settings()
+        if settings is None:
+            return
+        source = filedialog.askopenfilename(title=_("Datei auswählen"),
+                                            filetypes=self._file_types())
+        if not source:
+            return
+        base, extension = os.path.splitext(os.path.basename(source))
+        dest = filedialog.asksaveasfilename(
+            defaultextension=extension,
+            initialfile=f"{base}_klein{extension}",
+            filetypes=self._file_types())
+        if not dest:
+            return
+        if same_file(source, dest):
+            messagebox.showwarning(
+                _("Warnung"),
+                _("Das Original wird nicht überschrieben - bitte einen anderen "
+                  "Namen wählen."))
+            return
+
+        try:
+            self.status(_("Komprimiere ..."))
+            # Ohne das bleibt die Statuszeile leer: Das Fenster zeichnet erst
+            # nach dem Rueckkehr aus compress_file() neu, und bei einem grossen
+            # Bild sieht es bis dahin wie eingefroren aus.
+            self.root.update_idletasks()
+            before, after, quality, reached = compress_file(source, dest, **settings)
+        except UnsupportedFormat as e:
+            self.status(_("Nicht komprimierbar."))
+            messagebox.showwarning(
+                _("Nicht komprimierbar"),
+                _("{format} lässt sich nicht kleiner speichern. Der Format-Konverter "
+                  "wandelt es in ein Format mit Komprimierung um.").format(format=e))
+            return
+        except MultiFrameImage:
+            self.status(_("Nicht komprimierbar."))
+            messagebox.showwarning(
+                _("Nicht komprimierbar"),
+                _("Die Datei enthält mehrere Bilder (Animation oder mehrere Seiten). "
+                  "Komprimieren würde alle bis auf das erste verwerfen."))
+            return
+        except Exception as e:
+            logging.exception(f"Komprimierung {source}: {e}")
+            self.status(_("Komprimierung fehlgeschlagen."))
+            messagebox.showerror(
+                _("Fehler"),
+                _("Komprimierung fehlgeschlagen:\n{error}").format(error=e))
+            return
+
+        self.status(_("Gespeichert: {path}").format(path=dest))
+        message = _("Datei gespeichert:\n{path}\n\n{before} -> {after}  ({delta})").format(
+            path=dest, before=human_size(before), after=human_size(after),
+            delta=delta_text(before, after))
+        if quality is not None:
+            message += "\n" + _("Qualität: {quality}").format(quality=quality)
+        if reached:
+            messagebox.showinfo(_("Erfolg"), message)
+        else:
+            messagebox.showwarning(
+                _("Zielgröße nicht erreicht"),
+                message + "\n\n" + _("Die Zielgröße war nicht erreichbar."))
+
+    # ----------------------------------------------------------------- Stapel
+    def cancel(self):
+        self.cancel_event.set()
+        self.status(_("Abbruch angefordert ..."))
+
+    def _set_busy(self, busy):
+        self.busy = busy
+        self.run_btn.configure(state="disabled" if busy else "normal")
+        self.cancel_btn.configure(state="normal" if busy else "disabled")
+
+    def start_batch(self):
+        if self.busy:
+            return
+        if not self.files:
+            messagebox.showwarning(_("Warnung"), _("Keine Dateien ausgewählt!"))
+            return
+        settings = self._settings()
+        if settings is None:
+            return
+        target = filedialog.askdirectory(title=_("Ausgabeordner auswählen"))
+        if not target:
+            return
+
+        self._set_busy(True)
+        self.progress.configure(maximum=len(self.files), value=0)
+        self.run_async(self._batch_worker, list(self.files), target, settings)
+
+    def _batch_worker(self, files, target, settings):
+        result = {"done": 0, "skipped": 0, "failed": 0, "missed": 0, "grown": 0,
+                  "before": 0, "after": 0, "errors": [], "target": target,
+                  "cancelled": False, "remaining": 0}
+
+        # Das finally ist die Notbremse: Bliebe _batch_done aus, weil hier
+        # etwas Unerwartetes passiert, waere "Stapel komprimieren" fuer immer
+        # grau und das Modul gesperrt.
+        try:
+            for index, source in enumerate(files, 1):
+                if self.cancel_event.is_set():
+                    result["cancelled"] = True
+                    result["remaining"] = len(files) - index + 1
+                    break
+                name = os.path.basename(source)
+                self.ui(self.status, _("Komprimiere {done}/{total}: {name}").format(
+                    done=index, total=len(files), name=name))
+                try:
+                    # Immer in den Ausgabeordner und nie ueber eine vorhandene
+                    # Datei - auch dann nicht, wenn er der Quellordner ist.
+                    dest = unique_path(os.path.join(target, name))
+                    before, after, _quality, reached = compress_file(
+                        source, dest, **settings)
+                    result["done"] += 1
+                    result["before"] += before
+                    result["after"] += after
+                    if not reached:
+                        result["missed"] += 1
+                    if after >= before:
+                        result["grown"] += 1
+                except UnsupportedFormat as e:
+                    result["skipped"] += 1
+                    result["errors"].append(
+                        _("{name}: {format} kennt keine Komprimierung").format(
+                            name=name, format=e))
+                except MultiFrameImage:
+                    result["skipped"] += 1
+                    result["errors"].append(
+                        _("{name}: enthält mehrere Bilder").format(name=name))
+                except Exception as e:
+                    result["failed"] += 1
+                    result["errors"].append(f"{name}: {e}")
+                    logging.exception(f"Komprimierung {source}: {e}")
+                self.ui(self.progress.configure, {"value": index})
+        finally:
+            self.ui(self._batch_done, result)
+
+    def _batch_done(self, result):
+        self._set_busy(False)
+        self.progress.configure(value=0)
+        overview = _("{done} komprimiert, {skipped} übersprungen, {failed} "
+                     "fehlgeschlagen - {before} -> {after} ({delta})").format(
+            done=result["done"], skipped=result["skipped"], failed=result["failed"],
+            before=human_size(result["before"]), after=human_size(result["after"]),
+            delta=delta_text(result["before"], result["after"]))
+        set_text(self.summary, overview)
+        self.status(_("Abbruch - {done} Bild(er) komprimiert.").format(done=result["done"])
+                    if result["cancelled"] else overview)
+
+        message = _("{done} Datei(en) komprimiert nach:\n{target}").format(
+            done=result["done"], target=result["target"]) + "\n\n" + overview
+        if result["cancelled"]:
+            message += "\n\n" + _("Abgebrochen - {count} Datei(en) der Liste wurden "
+                                  "nicht bearbeitet.").format(count=result["remaining"])
+        if result["missed"]:
+            message += "\n\n" + _("Bei {count} Bild(ern) war die Zielgröße nicht "
+                                  "erreichbar.").format(count=result["missed"])
+        if result["grown"]:
+            message += "\n\n" + _("{count} Bild(er) wurden nicht kleiner - die Originale "
+                                  "waren schon gut komprimiert.").format(
+                count=result["grown"])
+        if result["errors"]:
+            message += _("\n\nFehler:\n") + "\n".join(result["errors"][:10])
+            if len(result["errors"]) > 10:
+                message += _("\n... und {count} weitere.").format(
+                    count=len(result["errors"]) - 10)
+        if result["errors"] or result["cancelled"]:
+            # Ein abgebrochener Lauf ist kein Erfolg, auch ohne einen Fehler
+            messagebox.showwarning(_("Teilweise fertig"), message)
+        else:
+            messagebox.showinfo(_("Erfolg"), message)
+
+
+# --------------------------------------------------------------------------
 # Modul: Icon-Extraktor
 # --------------------------------------------------------------------------
 
@@ -3256,7 +3831,7 @@ class InfoModule(Module):
                  _("Vereint die früheren Einzelprogramme Bildbetrachter Pro 2.0, "
                    "Icon Extraktor, Universal Image Converter und Bild-Dimensions-Filter "
                    "in einer Oberfläche.\n\n"
-                   "Tastatur: Strg+1 bis Strg+9 wechseln direkt zwischen den Modulen, "
+                   "Tastatur: Strg+1 bis Strg+9 und Strg+0 wechseln direkt zwischen den Modulen, "
                    "Esc springt zurück zum Start.") +
                  "\n\nLicensed under MIT License\n"
                  "Copyright 2026 Alexander Unverhau\n"
@@ -3274,7 +3849,7 @@ class InfoModule(Module):
 class ToolboxApp:
     module_classes = [HomeModule, CompareModule, StatisticsModule, DuplicateModule,
                       SimilarModule, DimensionModule, RenameModule, ConverterModule,
-                      IconModule, InfoModule]
+                      CompressModule, IconModule, InfoModule]
 
     def __init__(self, root):
         self.root = root
@@ -3480,8 +4055,11 @@ class ToolboxApp:
         self.root.destroy()
 
     def _bind_keys(self):
-        for index, cls in enumerate(self.module_classes[:9], 1):
-            self.root.bind(f"<Control-Key-{index}>",
+        # Zehn Ziffern, zehn Module: Strg+1 bis Strg+9, dann Strg+0. Mehr
+        # Zifferntasten gibt es nicht - ein weiteres Modul braeuchte ein anderes
+        # Kuerzel. "Info & Hilfe" steht bewusst hinten und bleibt ohne.
+        for index, cls in enumerate(self.module_classes[:10], 1):
+            self.root.bind(f"<Control-Key-{index % 10}>",
                            lambda _e, key=cls.key: self.show(key))
         self.root.bind("<Escape>", lambda _e: self.show("home"))
 
@@ -3875,6 +4453,11 @@ TRANSLATIONS = {
             "Convert single images or entire folders to another format",
         "JPEG, PNG, WebP, AVIF, BMP, GIF, TIFF, ICO und PPM - einzeln oder als Batch.":
             "JPEG, PNG, WebP, AVIF, BMP, GIF, TIFF, ICO and PPM - single or batch.",
+        "Komprimieren": "Compress",
+        "Bilder kleiner machen - nach Qualitätsstufe oder fester Zielgröße":
+            "Make images smaller - by quality level or a fixed target size",
+        "JPEG, WebP, AVIF, PNG und TIFF - mit Zielgröße in KB, einzeln oder als Stapel.":
+            "JPEG, WebP, AVIF, PNG and TIFF - with a target size in KB, single or batch.",
         "Icon-Extraktor": "Icon extractor",
         "Icons aus EXE-, DLL- und Bilddateien auslesen und speichern":
             "Read icons from EXE, DLL and image files and save them",
@@ -4100,6 +4683,73 @@ TRANSLATIONS = {
         "\n\nFehler:\n": "\n\nErrors:\n",
         "\n... und {count} weitere.": "\n... and {count} more.",
 
+        # --- Komprimieren ----------------------------------------------------
+        "Komprimierung": "Compression",
+        "Zielgröße": "Target size",
+        "KB - sucht die höchste Qualität, die noch passt (JPEG und WebP)":
+            "KB - finds the highest quality that still fits (JPEG and WebP)",
+        "Längste Kante": "Longest edge",
+        "Pixel - verkleinert nur, vergrößert nie": "pixels - only shrinks, never enlarges",
+        "Metadaten behalten (EXIF, Farbprofil)": "Keep metadata (EXIF, colour profile)",
+        "ohne Haken fallen sie weg - bei Fotos aus dem Telefon "
+        "oft einige Hundert KB":
+            "unticked they are dropped - often a few hundred KB "
+            "on photos from a phone",
+        "Jedes Neuspeichern eines verlustbehafteten Formats rechnet das Bild "
+        "neu - ab Qualität 80 sieht man davon im Regelfall nichts, mehrfach "
+        "hintereinander summiert es sich aber. PNG und TIFF bleiben Bildpunkt "
+        "für Bildpunkt gleich. Die Originale werden nie überschrieben.":
+            "Saving a lossy format again recomputes the image - from quality 80 up "
+            "you will not normally see it, but it adds up over several rounds. PNG "
+            "and TIFF stay the same pixel for pixel. The originals are never "
+            "overwritten.",
+        "Einzelnes Bild komprimieren ...": "Compress a single image ...",
+        "Stapel": "Batch",
+        "Stapel komprimieren": "Compress batch",
+        "Komprimierbare Bilder": "Compressible images",
+        "Ordner mit Bildern auswählen": "Select folder containing images",
+        "{count} Datei(en) bereit zum Komprimieren.": "{count} file(s) ready to compress.",
+        "Bitte eine Zielgröße in KB als Ganzzahl > 0 eingeben.":
+            "Please enter a target size in KB as a whole number > 0.",
+        "Bitte eine Kantenlänge in Pixel als Ganzzahl > 0 eingeben.":
+            "Please enter an edge length in pixels as a whole number > 0.",
+        "Das Original wird nicht überschrieben - bitte einen anderen Namen wählen.":
+            "The original is never overwritten - please choose a different name.",
+        "Komprimiere ...": "Compressing ...",
+        "Komprimiere {done}/{total}: {name}": "Compressing {done}/{total}: {name}",
+        "Komprimierung fehlgeschlagen.": "Compression failed.",
+        "Komprimierung fehlgeschlagen:\n{error}": "Compression failed:\n{error}",
+        "Nicht komprimierbar": "Cannot be compressed",
+        "Nicht komprimierbar.": "Cannot be compressed.",
+        "{format} lässt sich nicht kleiner speichern. Der Format-Konverter "
+        "wandelt es in ein Format mit Komprimierung um.":
+            "{format} cannot be saved any smaller. The format converter turns it "
+            "into a format that knows compression.",
+        "{name}: {format} kennt keine Komprimierung": "{name}: {format} has no compression",
+        "Datei gespeichert:\n{path}\n\n{before} -> {after}  ({delta})":
+            "File saved:\n{path}\n\n{before} -> {after}  ({delta})",
+        "Qualität: {quality}": "Quality: {quality}",
+        "Die Datei enthält mehrere Bilder (Animation oder mehrere Seiten). "
+        "Komprimieren würde alle bis auf das erste verwerfen.":
+            "The file holds several images (an animation or several pages). "
+            "Compressing it would throw away all but the first.",
+        "{name}: enthält mehrere Bilder": "{name}: holds several images",
+        "Abgebrochen - {count} Datei(en) der Liste wurden nicht bearbeitet.":
+            "Cancelled - {count} file(s) from the list were not processed.",
+        "Zielgröße nicht erreicht": "Target size not reached",
+        "Die Zielgröße war nicht erreichbar.": "The target size was out of reach.",
+        "Bei {count} Bild(ern) war die Zielgröße nicht erreichbar.":
+            "The target size was out of reach for {count} image(s).",
+        "{count} Bild(er) wurden nicht kleiner - die Originale waren schon gut komprimiert.":
+            "{count} image(s) did not get smaller - the originals were already well compressed.",
+        "{done} Datei(en) komprimiert nach:\n{target}":
+            "{done} file(s) compressed to:\n{target}",
+        "{done} komprimiert, {skipped} übersprungen, {failed} fehlgeschlagen - "
+        "{before} -> {after} ({delta})":
+            "{done} compressed, {skipped} skipped, {failed} failed - "
+            "{before} -> {after} ({delta})",
+        "Abbruch - {done} Bild(er) komprimiert.": "Cancelled - {done} image(s) compressed.",
+
         # --- Icon-Extraktor -------------------------------------------------
         "Quelle und Ziel": "Source and destination",
         "Quell-Datei": "Source file",
@@ -4149,12 +4799,12 @@ TRANSLATIONS = {
         "Vereint die früheren Einzelprogramme Bildbetrachter Pro 2.0, "
         "Icon Extraktor, Universal Image Converter und Bild-Dimensions-Filter "
         "in einer Oberfläche.\n\n"
-        "Tastatur: Strg+1 bis Strg+9 wechseln direkt zwischen den Modulen, "
+        "Tastatur: Strg+1 bis Strg+9 und Strg+0 wechseln direkt zwischen den Modulen, "
         "Esc springt zurück zum Start.":
             "Combines the former separate programs Bildbetrachter Pro 2.0, "
             "Icon Extraktor, Universal Image Converter and Bild-Dimensions-Filter "
             "in a single interface.\n\n"
-            "Keyboard: Ctrl+1 to Ctrl+9 switch straight between modules, "
+            "Keyboard: Ctrl+1 to Ctrl+9 and Ctrl+0 switch straight between modules, "
             "Esc returns to the home screen.",
     },
 }

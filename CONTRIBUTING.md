@@ -67,6 +67,7 @@ Grober Aufbau der Datei von oben nach unten:
 | Beschriftungen | `set_text()`, `refresh_texts()` – Texte, die einen Sprachwechsel mitmachen, ohne dass die Oberfläche neu gebaut wird |
 | Fensterlage | `window_placement()` – Startgröße aus dem gemessenen Platzbedarf, gemerkte Größe und Lage, Rückfall bei abgestecktem Monitor |
 | Programmsymbol | `set_window_icon()` – legt `bild_toolbox.ico` bzw. das Symbol der EXE in die Titelleiste |
+| Komprimieren | `compress_file()`, `quality_for_target()` – sucht die höchste Qualität, die unter eine Zielgröße passt, dazu `shrink_to_edge()` für die Kantenlänge |
 | Hilfsfunktionen | `human_size`, `md5_of`, `average_hash`, `iter_images` … |
 | Bausteine der Oberfläche | `Themed` mit `Frame`, `Label` … (Tk-Widgets, die sich ihre Farbrolle merken), `FlatButton`, `make_card`, `NavButton` … |
 | `Module` | Basisklasse, danach je ein Modul pro Werkzeug |
@@ -94,8 +95,10 @@ Grober Aufbau der Datei von oben nach unten:
    `description` und `group` setzen.
 2. `build()` implementieren – dort entsteht der Inhalt der Seite.
 3. Die Klasse in `ToolboxApp.module_classes` eintragen. Die Startseite, der
-   Reiter „Info & Hilfe" und die Tastenkürzel `Strg+1` … `Strg+9` lesen alle aus
-   dieser Liste und aktualisieren sich von selbst.
+   Reiter „Info & Hilfe" und die Tastenkürzel `Strg+1` … `Strg+9` und `Strg+0`
+   lesen alle aus dieser Liste und aktualisieren sich von selbst. Mehr als zehn
+   Zifferntasten gibt es nicht – ein elftes Arbeitsmodul braucht in
+   `_bind_keys()` ein anderes Kürzel, und `tests/test_module.py` meldet das.
 4. Alle sichtbaren Texte durch `_( ... )` führen und die deutschen Zeilen in
    `TRANSLATIONS` ergänzen. Beschriftungen von Widgets über
    `set_text(widget, _("..."))` setzen – auch spätere Änderungen, etwa die

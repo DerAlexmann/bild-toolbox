@@ -11,12 +11,26 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 ### Hinzugefügt
 
+- **Das Modul „Komprimieren“.** Bilder kleiner machen, ohne das Format zu
+  wechseln – über eine Qualitätsstufe oder über eine **Zielgröße in KB**, zu
+  der die passende Qualität selbst gesucht wird (JPEG und WebP). Dazu kommen
+  eine Grenze für die längste Kante, die nur verkleinert, und ein Schalter für
+  die Metadaten; vorher und nachher stehen mit der Ersparnis in Prozent
+  daneben. PNG und TIFF bleiben Bildpunkt für Bildpunkt gleich, die Originale
+  werden nie überschrieben. Erreichbar über `Strg+9`.
+
 - **Ein eigenes Programmsymbol.** Bisher trug die EXE das Standardsymbol von
   PyInstaller und das Fenster die Feder von Tk. Jetzt zeigen Explorer,
   Taskleiste und Titelleiste einen Stapel Bilder im Akzentblau des
   Farbschemas. Das Symbol liegt als `bild_toolbox.ico` bei und entsteht mit
   `python icon_erzeugen.py` neu; das Skript nimmt die Datei neben sich, die
   EXE trägt sie in sich.
+
+### Geändert
+
+- **Der Icon-Extraktor liegt jetzt auf `Strg+0`.** Mit dem zehnten Modul sind die
+  Zifferntasten voll; `Strg+1` bis `Strg+9` und `Strg+0` führen weiterhin der
+  Reihe nach durch die Seitenleiste.
 
 ## [1.0.5] – 2026-09-13
 
