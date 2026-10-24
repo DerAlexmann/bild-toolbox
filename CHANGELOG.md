@@ -9,6 +9,8 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+## [1.1.0] – 2026-10-24
+
 ### Hinzugefügt
 
 - **Das Modul „Komprimieren“.** Bilder kleiner machen, ohne das Format zu
@@ -188,7 +190,8 @@ Einzelprogramme *Bildbetrachter Pro 2.0*, *Icon Extraktor*,
   `pillow-heif` wird mit einer gewöhnlichen `import`-Zeile geladen, damit
   PyInstaller es beim Packen findet
 
-[Unveröffentlicht]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.5...HEAD
+[Unveröffentlicht]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.5...v1.1.0
 [1.0.5]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/DerAlexmann/bild-toolbox/compare/v1.0.2...v1.0.3

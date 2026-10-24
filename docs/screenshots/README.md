@@ -6,6 +6,7 @@ Die Bilder in diesem Ordner werden in [README.md](../../README.md) und
 | Datei | Inhalt |
 |---|---|
 | `start.png` | Startseite mit den Modulkacheln |
+| `komprimieren.png` | Modul Komprimieren mit Zielgröße und gefüllter Stapelliste |
 | `duplikate.png` | Duplikat-Finder mit einem echten Suchergebnis |
 | `konverter.png` | Format-Konverter mit gefüllter Batch-Liste |
 | `start-dunkel.png` | Startseite im dunklen Farbschema |

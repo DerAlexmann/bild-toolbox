@@ -18,7 +18,15 @@ Telemetrie – alles läuft lokal.
 ![Startseite mit allen Modulen als Kacheln](docs/screenshots/start.png)
 
 <details>
-<summary><b>Weitere Ansichten</b> – Duplikat-Finder, Format-Konverter, dunkles Schema</summary>
+<summary><b>Weitere Ansichten</b> – Komprimieren, Duplikat-Finder, Format-Konverter, dunkles Schema</summary>
+
+### Komprimieren
+
+Entweder eine Qualitätsstufe wählen oder eine Zielgröße in KB vorgeben – dann
+sucht das Modul die höchste Qualität, die noch darunter passt. Die Grenze für die
+längste Kante verkleinert nur und vergrößert nie.
+
+![Modul Komprimieren mit Zielgröße und gefüllter Stapelliste](docs/screenshots/komprimieren.png)
 
 ### Duplikat-Finder
 
