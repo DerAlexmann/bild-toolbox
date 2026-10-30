@@ -3,6 +3,15 @@ updates:
   # Python-Abhaengigkeiten in den requirements-Dateien
   - package-ecosystem: "pip"
     directory: "/"
+    # "Leave the version requirement unchanged if it already allows the new
+    # release": Die Untergrenzen in requirements.txt und
+    # requirements-optional.txt bleiben in Ruhe - sie nennen die aelteste
+    # Fassung, mit der das Programm laeuft, nicht die neueste. Angehoben
+    # werden nur die festen Versionen in requirements-build.txt, denn die
+    # lassen eine neue Fassung nicht zu. Ohne diese Zeile schlug Dependabot
+    # vor, Pillow von >=9.0 auf >=12.3.0 zu heben - das haette allen mit
+    # Pillow 9.1 bis 12.2 die Installation verwehrt, ohne Not.
+    versioning-strategy: "increase-if-necessary"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
