@@ -180,6 +180,13 @@ pyinstaller --noconfirm --onefile --windowed --name "Bild-Toolbox" \
 > Produktname und Version in den Dateieigenschaften leer. Die erzeugte Datei
 > steht in `.gitignore` und entsteht bei jedem Bau neu.
 
+> [!TIP]
+> **Den Release-Lauf proben**, ohne etwas zu veröffentlichen: in den Actions den
+> Workflow *Release* von Hand starten (`workflow_dispatch`). Dann bauen EXE und
+> Quellpaket samt aller Prüfungen; der Schritt, der den Release anlegt, bleibt
+> aus, weil kein Tag vorliegt. So fällt eine kaputte Build-Kette auf, bevor ein
+> Tag gesetzt ist.
+
 > [!IMPORTANT]
 > **Optionale Module müssen mit einer gewöhnlichen `import`-Zeile geladen
 > werden.** PyInstaller wertet beim Packen nur die sichtbaren `import`-Zeilen

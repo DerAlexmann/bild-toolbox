@@ -353,6 +353,54 @@ def test_release_sieht_sich_die_fertige_exe_an():
         "vergessene Anhebung von APP_VERSION fiele nicht auf.")
 
 
+def _jobbloecke(datei):
+    """Den Text eines Workflows in seine Jobs zerlegen: Name -> Textblock.
+
+    Hier wird absichtlich kein YAML-Leser gebraucht: Die Testumgebung soll
+    ausser pytest und ruff nichts brauchen. Die Jobnamen stehen mit zwei
+    Leerzeichen Einrueckung am Zeilenanfang, alles danach gehoert zum Job.
+
+    Gelesen wird erst ab "jobs:". Sonst gerieten "push" und
+    "workflow_dispatch" unter "on:" mit in die Liste - sie sind genauso
+    eingerueckt, sind aber keine Jobs.
+    """
+    text = _ohne_kommentare(datei.read_text(encoding="utf-8"))
+    _, stichwort, jobs = text.partition("\njobs:\n")
+    assert stichwort, f"In {datei.name} fehlt der Abschnitt jobs:."
+    stellen = [(treffer.group(1), treffer.start())
+               for treffer in re.finditer(r"^  ([\w-]+):$", jobs, re.MULTILINE)]
+    assert stellen, f"In {datei.name} liess sich kein Job finden."
+    bloecke = {}
+    for nummer, (name, anfang) in enumerate(stellen):
+        ende = stellen[nummer + 1][1] if nummer + 1 < len(stellen) else len(jobs)
+        bloecke[name] = jobs[anfang:ende]
+    return bloecke
+
+
+def test_release_legt_nur_bei_einem_tag_los():
+    # Ohne Tag kennt softprops/action-gh-release keinen Namen fuer den Release
+    # und bricht ab. Fehlt diese Bedingung, wird jeder Probelauf per
+    # workflow_dispatch rot, obwohl Bau und Pruefungen durchgelaufen sind -
+    # und ein roter Lauf, der nichts bedeutet, wird irgendwann nicht mehr
+    # angesehen.
+    jobs = _jobbloecke(RELEASE)
+    bedingung = re.search(r"^    if:(.*)$", jobs["release"], re.MULTILINE)
+    assert bedingung, (
+        "Der Job, der den Release anlegt, haengt nicht an einem Tag - ein "
+        "Probelauf per workflow_dispatch scheitert dann an diesem Schritt.")
+    # Auf den genauen Ausdruck, nicht auf das Stichwort: Ein verdrehtes "!="
+    # oder ein angehaengtes "|| true" liesse den Release bei einem echten Tag
+    # ausfallen oder trotzdem laufen - beides faellt erst beim Taggen auf.
+    erwartet = r"""\s*(?:\$\{\{)?\s*github\.ref_type\s*==\s*['"]tag['"]\s*(?:\}\})?\s*"""
+    assert re.fullmatch(erwartet, bedingung.group(1)), (
+        f"Die Bedingung lautet {bedingung.group(1).strip()!r}, erwartet war "
+        "genau github.ref_type == 'tag'.")
+    for name in ("quellpaket", "windows-exe"):
+        assert not re.search(r"^    if:", jobs[name], re.MULTILINE), (
+            f"Der Job {name} darf nicht an einem Tag haengen, sonst baut und "
+            "prueft der Probelauf gar nichts mehr.")
+
+
 def test_release_baut_aus_den_festen_versionen():
     # Geprueft werden die Installationszeilen, nicht die ganze Datei: Der
     # Quellpaket-Job kopiert requirements-optional.txt zu Recht mit ins ZIP.
