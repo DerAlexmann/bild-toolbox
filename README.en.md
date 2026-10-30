@@ -238,5 +238,12 @@ everywhere the copyright notice does – in the header of `Bild-Toolbox.pyw`, in
 *Info & help* tab, in this document and in [NOTICE](NOTICE). It does not change the MIT
 License in any way.
 
+The **Windows executable** additionally contains libraries from other projects – for HEIC
+and HEIF, `pillow-heif` brings along `libheif` and `libde265` (LGPLv3) as well as the
+`x265` encoder (GPLv2), among others. It is therefore distributed as a whole under the
+terms of the GPLv2, while the source code remains MIT. Every component is listed with its
+license and source in [DRITTANBIETER-LIZENZEN.md](DRITTANBIETER-LIZENZEN.md). If you want
+a program without any GPL parts, run the script without `pillow-heif`.
+
 The program consolidates the earlier standalone programs *Bildbetrachter Pro 2.0*,
 *Icon Extraktor*, *Universal Image Converter* and *Bild-Dimensions-Filter* into one interface.

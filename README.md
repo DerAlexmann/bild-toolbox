@@ -240,6 +240,13 @@ steht der Transparenz halber überall dort, wo auch der Copyright-Vermerk steht 
 im Kopf von `Bild-Toolbox.pyw`, im Reiter *Info & Hilfe* der Anwendung, in
 dieser Datei und in [NOTICE](NOTICE). An der MIT-Lizenz ändert er nichts.
 
+Die **Windows-EXE** enthält zusätzlich Bibliotheken anderer Projekte – für HEIC und
+HEIF bringt `pillow-heif` unter anderem `libheif` und `libde265` (LGPLv3) sowie den
+Encoder `x265` (GPLv2) mit. Sie wird deshalb als Gesamtwerk unter den Bedingungen der
+GPLv2 weitergegeben; der Quellcode bleibt MIT. Alle Bestandteile stehen mit Lizenz und
+Quelle in [DRITTANBIETER-LIZENZEN.md](DRITTANBIETER-LIZENZEN.md). Wer ein Programm
+ohne GPL-Teile möchte, startet das Skript ohne `pillow-heif`.
+
 Das Programm vereint die früheren Einzelprogramme *Bildbetrachter Pro 2.0*,
 *Icon Extraktor*, *Universal Image Converter* und *Bild-Dimensions-Filter* in
 einer Oberfläche.
