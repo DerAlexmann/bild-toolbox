@@ -18,6 +18,7 @@ import pytest
 QUELLE = Path(__file__).resolve().parent.parent / "Bild-Toolbox.pyw"
 SYMBOL = QUELLE.parent / "bild_toolbox.ico"
 RELEASE = QUELLE.parent / ".github" / "workflows" / "release.yml"
+DEPENDABOT = QUELLE.parent / ".github" / "dependabot.yml"
 ANFORDERUNGEN = QUELLE.parent / "requirements.txt"
 LIZENZHINWEISE = QUELLE.parent / "DRITTANBIETER-LIZENZEN.md"
 
@@ -300,6 +301,21 @@ def _versionen(datei):
         paare[_normal(name)] = (vergleich,
                                 tuple(int(teil) for teil in version.split(".")))
     return paare
+
+
+def test_dependabot_laesst_die_untergrenzen_in_ruhe():
+    # Ohne diese Einstellung hebt Dependabot auch die Untergrenzen an - zuletzt
+    # Pillow von >=9.0 auf >=12.3.0. Die Untergrenze nennt aber die aelteste
+    # Fassung, mit der das Programm laeuft; eine Anhebung verwehrt allen
+    # dazwischen die Installation, ohne dass das Programm etwas davon haette.
+    # Angehoben werden sollen nur die festen Versionen in
+    # requirements-build.txt.
+    text = _ohne_kommentare(DEPENDABOT.read_text(encoding="utf-8"))
+    assert re.search(r'^\s*versioning-strategy:\s*"?increase-if-necessary"?\s*$',
+                     text, re.MULTILINE), (
+        "In .github/dependabot.yml fehlt versioning-strategy: "
+        "increase-if-necessary - dann kommen Vorschlaege wieder, die nur die "
+        "Untergrenzen anheben.")
 
 
 def test_bauversionen_sind_festgenagelt():
