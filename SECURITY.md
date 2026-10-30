@@ -4,8 +4,8 @@
 
 | Version | Unterstützt |
 |---|---|
-| 1.0.x   | ✅ |
-| < 1.0   | ❌ |
+| 1.1.x   | ✅ |
+| < 1.1   | ❌ |
 
 Es wird immer nur die jeweils aktuelle Version gepflegt.
 

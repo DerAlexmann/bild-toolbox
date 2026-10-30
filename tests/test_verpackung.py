@@ -8,6 +8,8 @@ die EXE meldete dann, HEIC/HEIF werde nicht unterstuetzt, obwohl dasselbe
 Skript direkt ausgefuehrt einwandfrei damit umgehen konnte.
 """
 
+import importlib.util
+import os
 import re
 from pathlib import Path
 
@@ -20,10 +22,15 @@ ANFORDERUNGEN = QUELLE.parent / "requirements.txt"
 LIZENZHINWEISE = QUELLE.parent / "DRITTANBIETER-LIZENZEN.md"
 
 # Alle requirements-Dateien, deren Pakete in der EXE landen - auch eine
-# kuenftige dritte. requirements-dev.txt bleibt aussen vor: ruff und pytest
-# werden nie mitgeliefert.
+# kuenftige vierte. requirements-dev.txt bleibt aussen vor: ruff und pytest
+# werden nie mitgeliefert. requirements-build.txt zaehlt dazu, denn der
+# Bootloader von PyInstaller steckt in jeder gebauten EXE.
 MITGELIEFERT = [pfad for pfad in sorted(QUELLE.parent.glob("requirements*.txt"))
                 if pfad.name != "requirements-dev.txt"]
+BAUVERSIONEN = QUELLE.parent / "requirements-build.txt"
+LAUFZEIT = [pfad for pfad in MITGELIEFERT if pfad != BAUVERSIONEN]
+CI = QUELLE.parent / ".github" / "workflows" / "ci.yml"
+VERSIONSINFO = QUELLE.parent / "versionsinfo_erzeugen.py"
 SYMBOLGROESSEN = {16, 24, 32, 48, 64, 128, 256}
 
 # Image.Resampling, Image.Palette und die uebrigen Enums kamen mit Pillow
@@ -34,6 +41,18 @@ ENUMS_SEIT = (9, 1)
 @pytest.fixture(scope="module")
 def quelltext():
     return QUELLE.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def versionsinfo():
+    """versionsinfo_erzeugen.py als Modul - ein gewoehnliches Skript daneben."""
+    spec = importlib.util.spec_from_file_location("versionsinfo_erzeugen",
+                                                  VERSIONSINFO)
+    assert spec is not None and spec.loader is not None, (
+        f"Konnte fuer {VERSIONSINFO} keine Modulspezifikation erzeugen.")
+    modul = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modul)
+    return modul
 
 
 @pytest.mark.parametrize(
@@ -227,3 +246,194 @@ def test_release_scheitert_wenn_eine_datei_fehlt():
         "Beide Upload-Schritte brauchen if-no-files-found: error.")
     assert re.search(r"fail_on_unmatched_files:\s*true", yaml), (
         "Der Release-Schritt braucht fail_on_unmatched_files: true.")
+
+
+def test_heic_schreiben_und_lesen_mit_pillow_heif(tmp_path, toolbox):
+    """Eine HEIC-Datei wirklich erzeugen und wieder oeffnen.
+
+    Importieren allein beweist nichts: pillow-heif ist ein Plugin von Pillow.
+    Hebt eine der beiden Seiten ihre Hauptversion an, kann register_heif_opener()
+    stillschweigend scheitern - _register() verschluckt den Fehler, HAS_HEIF
+    wird False, und die fertige EXE meldete nur noch "keine
+    HEIC-Unterstuetzung". Dieser Test faellt stattdessen auf.
+    """
+    if os.environ.get("HEIC_PFLICHT"):
+        # In der CI ist dieser Test Pflicht: Ein Ueberspringen waere gruen,
+        # ohne dass etwas geschrieben oder gelesen wurde.
+        import pillow_heif  # noqa: F401
+    else:
+        pytest.importorskip("pillow_heif",
+                            reason="pillow-heif ist ein optionales Zusatzmodul")
+    from PIL import Image
+
+    assert toolbox.HAS_HEIF is True, (
+        "register_heif_opener() ist fehlgeschlagen - passen Pillow und "
+        "pillow-heif noch zusammen?")
+
+    pfad = tmp_path / "probe.heic"
+    Image.new("RGB", (64, 48), (10, 120, 200)).save(pfad, "HEIF", quality=80)
+    assert pfad.stat().st_size > 0
+
+    with Image.open(pfad) as wieder:
+        wieder.load()
+        assert wieder.size == (64, 48)
+        assert wieder.mode in ("RGB", "RGBA")
+
+
+def _normal(name):
+    """Paketnamen vergleichbar machen: Pillow, pillow und pillow_heif."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _versionen(datei):
+    """Paketname -> (Vergleich, Versionszahlen) aus einer requirements-Datei."""
+    paare = {}
+    for zeile in datei.read_text(encoding="utf-8").splitlines():
+        zeile = zeile.split("#")[0].strip()
+        if not zeile:
+            continue
+        treffer = re.fullmatch(r"([\w.\-]+)\s*(==|>=)\s*(\d+(?:\.\d+)*)", zeile)
+        assert treffer, (
+            f"{datei.name}: {zeile!r} ist weder ==X.Y noch >=X.Y - diese "
+            "Pruefung versteht nur einfache Zeilen.")
+        name, vergleich, version = treffer.groups()
+        paare[_normal(name)] = (vergleich,
+                                tuple(int(teil) for teil in version.split(".")))
+    return paare
+
+
+def test_bauversionen_sind_festgenagelt():
+    # Untergrenzen wie ">=9.1" sind fuer das Skript richtig, fuer die
+    # veroeffentlichte EXE nicht: Die ausgelieferte Datei haengt sonst davon
+    # ab, was am Tag des Baus die neueste Fassung war. Der Suchausdruck in
+    # _versionen() laesst auch Platzhalter wie "==13.*" nicht durch.
+    fest = _versionen(BAUVERSIONEN)
+    assert fest, f"{BAUVERSIONEN.name} nennt kein einziges Paket"
+    for name, (vergleich, _version) in fest.items():
+        assert vergleich == "==", (
+            f"{name} ist in {BAUVERSIONEN.name} nicht festgenagelt.")
+
+
+@pytest.mark.parametrize("datei", LAUFZEIT, ids=lambda pfad: pfad.name)
+def test_bauversionen_decken_alle_pakete_ab(datei):
+    # Vor dem Festnageln installierte der Release-Job die requirements-Dateien
+    # selbst - ein neues Zusatzmodul war damit automatisch in der EXE. Jetzt
+    # zaehlt nur noch die Bauliste: Fehlt dort ein Paket, meldete die EXE die
+    # Funktion stillschweigend als "nicht installiert".
+    fest = _versionen(BAUVERSIONEN)
+    for name, (_vergleich, untergrenze) in _versionen(datei).items():
+        assert name in fest, (
+            f"{name} steht in {datei.name}, aber nicht in "
+            f"{BAUVERSIONEN.name} - die EXE wuerde ohne dieses Paket gebaut.")
+        assert fest[name][1] >= untergrenze, (
+            f"{name}: {BAUVERSIONEN.name} nagelt eine Fassung unterhalb der "
+            f"Untergrenze aus {datei.name} fest.")
+
+
+def test_ci_prueft_die_festgenagelten_versionen():
+    # Ohne diesen Job laeuft die gepinnte Kombination erstmals beim Tag.
+    yaml = _ohne_kommentare(CI.read_text(encoding="utf-8"))
+    assert "-r requirements-build.txt" in yaml, (
+        "Kein CI-Job installiert die festgenagelten Bauversionen.")
+    assert "test_heic_schreiben_und_lesen" in yaml, (
+        "Die CI ruft den HEIC-Rundlauf nicht namentlich auf.")
+    assert yaml.count("HEIC_PFLICHT") >= 2, (
+        "Ohne HEIC_PFLICHT darf der Rundlauf uebersprungen werden und der "
+        "Schritt waere trotzdem gruen.")
+
+
+def test_release_sieht_sich_die_fertige_exe_an():
+    # Der Workflow-Text allein beweist nicht, dass die Metadaten in der Datei
+    # landen. Dieser Schritt liest sie aus der gebauten EXE zurueck.
+    yaml = _ohne_kommentare(RELEASE.read_text(encoding="utf-8"))
+    assert "VersionInfo" in yaml, (
+        "Nach dem Bau wird die Versionsressource der EXE nicht geprueft.")
+    assert "GITHUB_REF_TYPE" in yaml, (
+        "Der Tag wird nicht gegen die Version der EXE gehalten - eine "
+        "vergessene Anhebung von APP_VERSION fiele nicht auf.")
+
+
+def test_release_baut_aus_den_festen_versionen():
+    # Geprueft werden die Installationszeilen, nicht die ganze Datei: Der
+    # Quellpaket-Job kopiert requirements-optional.txt zu Recht mit ins ZIP.
+    yaml = _ohne_kommentare(RELEASE.read_text(encoding="utf-8"))
+    zeilen = [zeile for zeile in yaml.splitlines() if "pip install" in zeile]
+    assert zeilen, "Im Release-Workflow wird nichts installiert?"
+    assert any("-r requirements-build.txt" in zeile for zeile in zeilen), (
+        "Der Release-Job installiert nicht aus requirements-build.txt.")
+    gemischt = [zeile for zeile in zeilen
+                if "requirements-optional.txt" in zeile or "requirements.txt" in zeile]
+    assert not gemischt, (
+        f"Der Build mischt wieder Untergrenzen hinein: {gemischt}")
+
+
+def test_exe_traegt_produktname_und_version():
+    # Ohne --version-file bleiben die Dateieigenschaften leer. Produktname und
+    # Produktversion verlangt ausserdem jede Code-Signierung.
+    yaml = _ohne_kommentare(RELEASE.read_text(encoding="utf-8"))
+    assert "python versionsinfo_erzeugen.py" in yaml, (
+        "Die Versionsdatei wird im Release nicht erzeugt.")
+    assert "--version-file versionsinfo.txt" in yaml, (
+        "PyInstaller bekommt die Versionsdatei nicht uebergeben.")
+
+
+def test_versionsinfo_kommt_aus_dem_quelltext(toolbox, versionsinfo):
+    # Eine zweite Stelle mit der Versionsnummer waere eine Stelle zu viel:
+    # Der Erzeuger liest APP_NAME und APP_VERSION aus Bild-Toolbox.pyw. Wer
+    # die Angaben dort fest einbaut, faellt hier auf.
+    assert versionsinfo._aus_quelltext("APP_VERSION") == toolbox.APP_VERSION
+    assert versionsinfo._aus_quelltext("APP_NAME") == toolbox.APP_NAME
+
+    text = versionsinfo.inhalt(toolbox.APP_NAME, toolbox.APP_VERSION)
+    haupt, neben, flick, bau = versionsinfo.vierstellig(toolbox.APP_VERSION)
+
+    assert f"filevers=({haupt}, {neben}, {flick}, {bau})" in text
+    assert f"StringStruct('ProductVersion', '{toolbox.APP_VERSION}')" in text
+    assert f"StringStruct('ProductName', '{toolbox.APP_NAME}')" in text
+    # Der Hinweis auf die KI-Unterstuetzung steht ueberall dort, wo auch der
+    # Copyright-Vermerk steht - die Dateieigenschaften sind so eine Stelle.
+    assert "Claude AI" in text
+
+
+def test_versionsdatei_wird_von_pyinstaller_angenommen(tmp_path, toolbox,
+                                                       versionsinfo):
+    # Ein Tippfehler in der Vorlage faellt sonst erst im Release-Job auf.
+    versioninfo = pytest.importorskip(
+        "PyInstaller.utils.win32.versioninfo",
+        reason="PyInstaller ist nur zum Bauen noetig, nicht fuer die Tests")
+    datei = tmp_path / "versionsinfo.txt"
+    datei.write_text(versionsinfo.inhalt(toolbox.APP_NAME, toolbox.APP_VERSION),
+                     encoding="utf-8")
+
+    info = versioninfo.load_version_info_from_text_file(str(datei))
+    felder = {eintrag.name: eintrag.val
+              for eintrag in info.kids[0].kids[0].kids}
+    assert felder["ProductName"] == toolbox.APP_NAME
+    assert felder["ProductVersion"] == toolbox.APP_VERSION
+    assert felder["OriginalFilename"] == f"{toolbox.APP_NAME}.exe"
+
+
+@pytest.mark.parametrize(
+    ("version", "erwartet"),
+    [
+        ("1.1.0", (1, 1, 0, 0)),
+        ("2.10.3", (2, 10, 3, 0)),
+        ("1.2", (1, 2, 0, 0)),
+        ("1", (1, 0, 0, 0)),
+        ("1.1.0.4", (1, 1, 0, 4)),
+    ],
+)
+def test_vierstellig_rechnet_richtig(versionsinfo, version, erwartet):
+    # Von Hand hingeschrieben und nicht mit derselben Funktion errechnet:
+    # Sonst prueft der Test nur, dass die Funktion sich selbst gleicht.
+    assert versionsinfo.vierstellig(version) == erwartet
+
+
+@pytest.mark.parametrize("version", ["1.2.0rc1", "1.2.0-beta", "v1.2.0", "",
+                                     "1..0", "1.2.3.4.5", "1.70000.0"])
+def test_vierstellig_lehnt_unbrauchbares_mit_klartext_ab(versionsinfo, version):
+    # Ein "invalid literal for int()" mitten im Release-Lauf sagt niemandem,
+    # dass APP_VERSION gemeint ist.
+    with pytest.raises(SystemExit) as fehler:
+        versionsinfo.vierstellig(version)
+    assert "APP_VERSION" in str(fehler.value)

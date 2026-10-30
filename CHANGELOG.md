@@ -20,6 +20,30 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
   Der Quellcode bleibt MIT – die EXE wird als Gesamtwerk unter den Bedingungen
   der GPLv2 weitergegeben, weil `x265` sich nicht weglassen lässt, ohne das
   Lesen von HEIC mitzunehmen.
+- **Versionsangaben in der EXE.** Die Dateieigenschaften im Explorer waren
+  bisher leer – PyInstaller legt von sich aus keine Versionsressource an.
+  Jetzt stehen Produktname, Version, Urheber und ein Verweis auf die
+  Lizenzhinweise darin. `versionsinfo_erzeugen.py` liest die Angaben aus
+  `APP_VERSION`, gepflegt wird die Version also weiterhin an einer Stelle.
+
+### Geändert
+
+- **Die EXE entsteht aus festgenagelten Versionen.** `requirements-build.txt`
+  nennt genaue Fassungen von PyInstaller, Pillow und den Zusatzmodulen. Damit
+  hängt die ausgelieferte EXE nicht mehr davon ab, was am Tag des Baus gerade
+  die neueste Fassung war, und eine fehlerhafte Neuerscheinung kippt keinen
+  Release. Mitgezogene Abhängigkeiten und die Fassung des Laufzeitsystems sind
+  weiterhin nicht festgelegt – Bit für Bit reproduzierbar ist der Bau also
+  nicht. Die Untergrenzen in `requirements.txt` gelten weiter für alle, die
+  das Skript laufen lassen.
+- **Ein neuer CI-Job prüft genau diese festgenagelten Versionen**, damit eine
+  unverträgliche Anhebung im Pull Request auffällt und nicht erst beim Tag.
+- **Die CI schreibt und liest jetzt eine echte HEIC-Datei**, statt
+  `pillow_heif` nur zu importieren. `pillow-heif` ist ein Plugin von Pillow;
+  hebt eine der beiden Seiten ihre Hauptversion an, scheiterte die Anmeldung
+  bisher stillschweigend und die EXE meldete nur noch „keine
+  HEIC-Unterstützung".
+- `SECURITY.md` nennt als gepflegte Reihe 1.1.x.
 
 ## [1.1.0] – 2026-10-24
 

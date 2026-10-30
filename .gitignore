@@ -19,6 +19,9 @@ dist/
 .eggs/
 *.spec
 
+# Entsteht beim Bauen aus APP_VERSION, siehe versionsinfo_erzeugen.py
+versionsinfo.txt
+
 # Virtuelle Umgebungen
 .venv/
 venv/

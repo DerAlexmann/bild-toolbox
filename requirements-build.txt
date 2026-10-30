@@ -1,0 +1,21 @@
+# Abhaengigkeiten fuer den Bau der Windows-EXE / dependencies for building the EXE
+#
+# Hier stehen genaue Versionen und keine Untergrenzen wie in requirements.txt:
+# Derselbe Tag soll zweimal dieselbe EXE ergeben, und eine fehlerhafte neue
+# Fassung von PyInstaller oder Pillow soll keinen Release kippen. Dependabot
+# hebt diese Zeilen an - dann wird die neue Fassung einmal bewusst geprueft,
+# statt unbemerkt in ein Release zu rutschen.
+#
+# requirements.txt und requirements-optional.txt behalten ihre Untergrenzen:
+# Sie gelten fuer alle, die das Skript selbst laufen lassen.
+#
+# Exact versions on purpose: the same tag must produce the same executable.
+# The other requirements files keep their lower bounds for people running the
+# script themselves.
+
+pyinstaller==6.22.3
+
+Pillow==13.0.0
+pillow-heif==1.8.1     # bringt libheif, libde265 und x265 mit - siehe DRITTANBIETER-LIZENZEN.md
+Send2Trash==2.1.0
+icoextract==0.3.1
