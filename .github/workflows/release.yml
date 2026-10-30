@@ -29,7 +29,10 @@ jobs:
           cp Bild-Toolbox.pyw bild_toolbox.ico LICENSE NOTICE DRITTANBIETER-LIZENZEN.md \
              README.md README.en.md CHANGELOG.md requirements.txt \
              requirements-optional.txt out/Bild-Toolbox/
-          cd out && zip -r "Bild-Toolbox-${GITHUB_REF_NAME}-quellen.zip" Bild-Toolbox
+          # Schraegstriche im Ref-Namen werden ersetzt: Bei einem Probelauf
+          # von einem Branch wie dependabot/pip/... zeigte der Pfad sonst in
+          # einen Ordner, den es nicht gibt. Tags wie v1.1.0 bleiben, wie sie sind.
+          cd out && zip -r "Bild-Toolbox-${GITHUB_REF_NAME//\//-}-quellen.zip" Bild-Toolbox
 
       - uses: actions/upload-artifact@v7
         with:
@@ -132,6 +135,10 @@ jobs:
     name: Release veroeffentlichen
     needs: [quellpaket, windows-exe]
     runs-on: ubuntu-latest
+    # Nur bei einem Tag. Ohne Tag kennt die Action keinen Namen fuer den
+    # Release und bricht ab - ein Probelauf per workflow_dispatch soll bauen
+    # und pruefen duerfen, ohne an diesem Schritt rot zu werden.
+    if: github.ref_type == 'tag'
     steps:
       - uses: actions/download-artifact@v8
         with:
