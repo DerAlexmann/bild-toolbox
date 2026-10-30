@@ -165,10 +165,20 @@ docs: Installationshinweis für Linux
 Windows-EXE mit PyInstaller. Lokal geht das so:
 
 ```bash
-pip install pyinstaller
+pip install -r requirements-build.txt
+python versionsinfo_erzeugen.py && \
 pyinstaller --noconfirm --onefile --windowed --name "Bild-Toolbox" \
-  --icon bild_toolbox.ico --collect-all pillow_heif Bild-Toolbox.pyw
+  --icon bild_toolbox.ico --version-file versionsinfo.txt \
+  --collect-all pillow_heif Bild-Toolbox.pyw
 ```
+
+> [!NOTE]
+> **`requirements-build.txt` nagelt die Versionen fest**, mit denen die
+> veröffentlichte EXE entsteht – `requirements.txt` behält die Untergrenzen für
+> alle, die das Skript laufen lassen. **`versionsinfo_erzeugen.py`** schreibt
+> `versionsinfo.txt` aus `APP_VERSION`; ohne `--version-file` bleiben
+> Produktname und Version in den Dateieigenschaften leer. Die erzeugte Datei
+> steht in `.gitignore` und entsteht bei jedem Bau neu.
 
 > [!IMPORTANT]
 > **Optionale Module müssen mit einer gewöhnlichen `import`-Zeile geladen

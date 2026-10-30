@@ -50,9 +50,18 @@ jobs:
           python-version: "3.12"
 
       - name: Abhaengigkeiten installieren
+        # Genaue Versionen aus requirements-build.txt: Derselbe Tag soll
+        # zweimal dieselbe EXE ergeben. Die Untergrenzen in requirements.txt
+        # gelten weiter fuer alle, die das Skript selbst laufen lassen.
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-optional.txt pyinstaller
+          pip install -r requirements-build.txt
+
+      - name: Versionsmetadaten erzeugen
+        # Ohne --version-file bleiben Produktname, Version und Urheber in den
+        # Dateieigenschaften leer - PyInstaller legt von sich aus keine
+        # Versionsressource an. Die Angaben kommen aus APP_VERSION.
+        run: python versionsinfo_erzeugen.py
 
       # --collect-all pillow_heif ist eine Absicherung: Bild-Toolbox.pyw laedt
       # pillow-heif inzwischen mit einer gewoehnlichen import-Zeile, damit
@@ -64,8 +73,24 @@ jobs:
           pyinstaller --noconfirm --onefile --windowed
           --name "Bild-Toolbox"
           --icon bild_toolbox.ico
+          --version-file versionsinfo.txt
           --collect-all pillow_heif
           Bild-Toolbox.pyw
+
+      - name: Versionsangaben der EXE pruefen
+        # Der einzige Schritt, der die fertige Datei ansieht: Fehlt die
+        # Versionsressource, faellt es sonst niemandem auf. Bei einem Tag muss
+        # die Version ausserdem zum Tag passen - sonst wurde APP_VERSION in
+        # Bild-Toolbox.pyw vergessen, und die EXE meldete die alte Nummer.
+        run: |
+          $info = (Get-Item "dist\Bild-Toolbox.exe").VersionInfo
+          if (-not $info.ProductName -or -not $info.ProductVersion) {
+            throw "Die EXE traegt keine Versionsangaben - wurde --version-file uebergeben?"
+          }
+          Write-Output "ProductName: $($info.ProductName), ProductVersion: $($info.ProductVersion)"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and "v$($info.ProductVersion)" -ne $env:GITHUB_REF_NAME) {
+            throw "Tag $($env:GITHUB_REF_NAME) passt nicht zu ProductVersion $($info.ProductVersion) - APP_VERSION vergessen?"
+          }
 
       - name: Startet die EXE ueberhaupt?
         # Ein reiner Rauchtest: die EXE wird gestartet und nach wenigen

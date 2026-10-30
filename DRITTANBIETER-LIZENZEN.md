@@ -43,7 +43,7 @@ trotzdem nicht: `libheif.dll` ist fest gegen `libx265` gebunden und lädt ohne d
 | **x265** – HEVC-Encoder, in `pillow-heif` enthalten | **GPLv2** | [COPYING](https://bitbucket.org/multicoreware/x265_git/src/master/COPYING) |
 | **libgcc, libstdc++** – MinGW-Laufzeit, kommt mit `pillow-heif` | GPLv3 **mit** GCC Runtime Library Exception | [Erläuterung](https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html), [Ausnahme](https://www.gnu.org/licenses/gcc-exception-3.1.html) |
 | **libwinpthread** – MinGW-w64-Laufzeit, kommt mit `pillow-heif` | permissiv, siehe COPYING | [mingw-w64](https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/COPYING) |
-| **PyInstaller-Bootloader** – startet die gepackte Anwendung | GPLv2 **mit** Ausnahme für damit erzeugte Programme | [Lizenzhinweis](https://pyinstaller.org/en/stable/license.html) |
+| **PyInstaller** – dessen Bootloader startet die gepackte Anwendung | GPLv2 **mit** Ausnahme für damit erzeugte Programme | [Lizenzhinweis](https://pyinstaller.org/en/stable/license.html) |
 
 Die vollständigen Texte der beiden wichtigsten Lizenzen:
 [GPLv2](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html) ·
@@ -134,7 +134,7 @@ without that file, which would take HEIC reading down with it.
 | **x265** – HEVC encoder, bundled in `pillow-heif` | **GPLv2** | [COPYING](https://bitbucket.org/multicoreware/x265_git/src/master/COPYING) |
 | **libgcc, libstdc++** – MinGW runtime, ships with `pillow-heif` | GPLv3 **with** the GCC Runtime Library Exception | [explanation](https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html), [exception](https://www.gnu.org/licenses/gcc-exception-3.1.html) |
 | **libwinpthread** – MinGW-w64 runtime, ships with `pillow-heif` | permissive, see COPYING | [mingw-w64](https://sourceforge.net/p/mingw-w64/mingw-w64/ci/master/tree/COPYING) |
-| **PyInstaller bootloader** – starts the packaged application | GPLv2 **with** an exception for the programs it builds | [license notice](https://pyinstaller.org/en/stable/license.html) |
+| **PyInstaller** – its bootloader starts the packaged application | GPLv2 **with** an exception for the programs it builds | [license notice](https://pyinstaller.org/en/stable/license.html) |
 
 Full texts of the two licenses that matter most:
 [GPLv2](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html) ·

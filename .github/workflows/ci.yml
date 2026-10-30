@@ -64,7 +64,7 @@ jobs:
         run: python -m pytest
 
   optional-extras:
-    name: Optionale Zusatzmodule installierbar
+    name: Optionale Zusatzmodule
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -75,9 +75,49 @@ jobs:
 
       # Stellt sicher, dass requirements-optional.txt nicht veraltet -
       # die Toolbox laeuft ohne diese Pakete, soll sie aber nutzen koennen.
+      # Hier gelten bewusst die Untergrenzen und nicht die festgenagelten
+      # Versionen aus requirements-build.txt: Dieser Job ist die Fruehwarnung
+      # fuer neue Fassungen, die EXE baut dagegen aus festen Versionen.
       - name: Alles installieren
-        run: pip install -r requirements.txt -r requirements-optional.txt
+        run: pip install -r requirements.txt -r requirements-optional.txt -r requirements-dev.txt
 
       - name: Import pruefen
         run: |
           python -c "import PIL, send2trash, icoextract, pillow_heif; print('alle Zusatzmodule geladen')"
+
+      # Importieren allein beweist nichts: pillow-heif ist ein Plugin von
+      # Pillow. Hebt eine der beiden Seiten ihre Hauptversion an, kann die
+      # Anmeldung stillschweigend scheitern - _register() verschluckt den
+      # Fehler, HAS_HEIF wird False, und die EXE meldete nur noch "keine
+      # HEIC-Unterstuetzung". Dieser Schritt schreibt und liest eine Datei.
+      - name: HEIC wirklich schreiben und lesen
+        env:
+          # Ohne diese Variable darf der Test das fehlende Paket ueberspringen
+          # und waere damit gruen, ohne etwas geprueft zu haben. Hier ist er
+          # Pflicht. Der Testname steht ausdruecklich da: Bei "-k heif" waehlte
+          # pytest auch Nachbartests aus, und ein Tippfehler im Namen fiele
+          # nicht auf.
+          HEIC_PFLICHT: "1"
+        run: python -m pytest tests/test_verpackung.py -k test_heic_schreiben_und_lesen -v
+
+  bauversionen:
+    name: Festgenagelte Bauversionen
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Genau die Versionen, mit denen die veroeffentlichte EXE entsteht -
+      # samt PyInstaller. Ohne diesen Job liefe die gepinnte Kombination
+      # erstmals beim Tag, und eine unvertraegliche Anhebung von Dependabot
+      # fiele erst im Release auf. Hier laeuft sie in jedem Pull Request.
+      - name: Bauversionen installieren
+        run: pip install -r requirements-build.txt -r requirements-dev.txt
+
+      - name: Tests gegen die Bauversionen
+        env:
+          HEIC_PFLICHT: "1"
+        run: python -m pytest tests/test_verpackung.py -v
