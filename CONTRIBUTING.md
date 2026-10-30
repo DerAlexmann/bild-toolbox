@@ -46,6 +46,12 @@ Bitte zusätzlich das Programm starten und das geänderte Modul einmal von Hand
 durchspielen. Die Tests sind bewusst GUI-frei und prüfen die Datenstrukturen,
 nicht die Bedienung.
 
+> [!IMPORTANT]
+> **Eine neue Abhängigkeit** gehört nicht nur in die passende `requirements`-Datei,
+> sondern auch in [DRITTANBIETER-LIZENZEN.md](DRITTANBIETER-LIZENZEN.md) – mit Lizenz
+> und Quelle, und bei Binärpaketen auch mit den Bibliotheken, die sie selbst
+> mitbringen. `tests/test_verpackung.py` schlägt sonst fehl.
+
 ---
 
 ## Aufbau des Projekts

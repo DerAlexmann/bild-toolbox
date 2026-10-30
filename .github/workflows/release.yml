@@ -26,13 +26,17 @@ jobs:
       - name: ZIP packen
         run: |
           mkdir -p out/Bild-Toolbox
-          cp Bild-Toolbox.pyw bild_toolbox.ico README.md README.en.md LICENSE NOTICE \
-             CHANGELOG.md requirements.txt requirements-optional.txt out/Bild-Toolbox/
+          cp Bild-Toolbox.pyw bild_toolbox.ico LICENSE NOTICE DRITTANBIETER-LIZENZEN.md \
+             README.md README.en.md CHANGELOG.md requirements.txt \
+             requirements-optional.txt out/Bild-Toolbox/
           cd out && zip -r "Bild-Toolbox-${GITHUB_REF_NAME}-quellen.zip" Bild-Toolbox
 
       - uses: actions/upload-artifact@v7
         with:
           name: quellpaket
+          # Ohne "error" warnt die Action nur und der Release entsteht ohne
+          # Quellpaket - GPLv2 und LGPLv3 verlangen aber den Quellcode.
+          if-no-files-found: error
           path: out/*.zip
 
   windows-exe:
@@ -81,12 +85,23 @@ jobs:
           Write-Output "SHA-256: $h"
           "$h  Bild-Toolbox.exe" | Out-File -Encoding ascii "dist\SHA256SUMS.txt"
 
+      - name: Lizenzhinweise neben die EXE legen
+        # Die EXE enthaelt Bibliotheken unter LGPLv3 und GPLv2. Deren Lizenzen
+        # und Quellen muessen den Anwender mit erreichen, nicht nur das
+        # Repository - deshalb haengt die Datei am Release.
+        run: Copy-Item DRITTANBIETER-LIZENZEN.md dist/
+
       - uses: actions/upload-artifact@v7
         with:
           name: windows-exe
+          # Vorgabe waere "warn": Fehlt eine der drei Dateien, lieferte das
+          # Release sie stillschweigend nicht mit - die Pruefsumme oder die
+          # Lizenzhinweise fehlten, ohne dass etwas rot wird.
+          if-no-files-found: error
           path: |
             dist/Bild-Toolbox.exe
             dist/SHA256SUMS.txt
+            dist/DRITTANBIETER-LIZENZEN.md
 
   release:
     name: Release veroeffentlichen
@@ -102,7 +117,11 @@ jobs:
         with:
           draft: true          # erst pruefen, dann von Hand veroeffentlichen
           generate_release_notes: true
+          # Vorgabe ist false: Ein Pfad, der nichts trifft, wuerde den Release
+          # ohne diese Datei anlegen. Hier darf nichts fehlen.
+          fail_on_unmatched_files: true
           files: |
             artefakte/quellpaket/*.zip
             artefakte/windows-exe/Bild-Toolbox.exe
             artefakte/windows-exe/SHA256SUMS.txt
+            artefakte/windows-exe/DRITTANBIETER-LIZENZEN.md

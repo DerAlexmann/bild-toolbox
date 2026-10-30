@@ -5,6 +5,18 @@ Created with assistance of Claude AI (Anthropic)
 Licensed under the MIT License. The full license text is in the file LICENSE
 next to this one; this file adds no conditions of its own.
 
+Die mitgelieferte Windows-EXE enthält zusätzlich Bestandteile anderer Projekte,
+darunter Bibliotheken unter LGPLv3 und GPLv2. Sie sind in der Datei
+DRITTANBIETER-LIZENZEN.md mit Lizenz und Quelle aufgeführt; die EXE wird deshalb
+als Gesamtwerk unter den Bedingungen der GPLv2 weitergegeben. Der Quellcode
+bleibt MIT.
+
+The bundled Windows executable additionally contains components from other
+projects, among them libraries under LGPLv3 and GPLv2. They are listed with
+their licenses and sources in the file DRITTANBIETER-LIZENZEN.md; the executable
+as a whole is therefore distributed under the terms of the GPLv2. The source
+code remains MIT.
+
 
 Hinweis zur Entstehung
 ----------------------

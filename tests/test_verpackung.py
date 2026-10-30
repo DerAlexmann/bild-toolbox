@@ -17,6 +17,13 @@ QUELLE = Path(__file__).resolve().parent.parent / "Bild-Toolbox.pyw"
 SYMBOL = QUELLE.parent / "bild_toolbox.ico"
 RELEASE = QUELLE.parent / ".github" / "workflows" / "release.yml"
 ANFORDERUNGEN = QUELLE.parent / "requirements.txt"
+LIZENZHINWEISE = QUELLE.parent / "DRITTANBIETER-LIZENZEN.md"
+
+# Alle requirements-Dateien, deren Pakete in der EXE landen - auch eine
+# kuenftige dritte. requirements-dev.txt bleibt aussen vor: ruff und pytest
+# werden nie mitgeliefert.
+MITGELIEFERT = [pfad for pfad in sorted(QUELLE.parent.glob("requirements*.txt"))
+                if pfad.name != "requirements-dev.txt"]
 SYMBOLGROESSEN = {16, 24, 32, 48, 64, 128, 256}
 
 # Image.Resampling, Image.Palette und die uebrigen Enums kamen mit Pillow
@@ -132,3 +139,91 @@ def test_symbol_uebersteht_eine_ablehnung_von_tk(toolbox, monkeypatch):
 
     monkeypatch.setattr(toolbox.sys, "platform", "win32")
     toolbox.set_window_icon(Fenster())
+
+
+def _paketnamen(datei):
+    """Paketnamen aus einer requirements-Datei - ohne Kommentare und Versionen."""
+    namen = []
+    for zeile in datei.read_text(encoding="utf-8").splitlines():
+        zeile = zeile.split("#")[0].strip()
+        if not zeile:
+            continue
+        if zeile.startswith("-"):
+            # "-r andere.txt" verweist auf eine Liste, die diese Pruefung nicht
+            # sieht. Lieber laut abbrechen als Pakete stillschweigend uebergehen.
+            raise AssertionError(
+                f"{datei.name} benutzt die Option {zeile!r} - diese Pruefung "
+                "liest nur flache Paketlisten und muesste erweitert werden.")
+        namen.append(re.split(r"[<>=!~\[;\s]", zeile, maxsplit=1)[0])
+    assert namen, f"{datei.name} enthaelt kein einziges Paket"
+    return namen
+
+
+def _tabellenzeilen(text, name):
+    """Zeilen der Lizenztabelle, die mit **name** beginnen - deutsch und englisch."""
+    gesucht = re.escape(name.replace("_", "-"))
+    return re.findall(rf"^\|\s*\*\*{gesucht}\*\*.*$", text,
+                      re.MULTILINE | re.IGNORECASE)
+
+
+@pytest.mark.parametrize("datei", MITGELIEFERT, ids=lambda pfad: pfad.name)
+def test_lizenzhinweise_nennen_jede_abhaengigkeit(datei):
+    # Die EXE liefert diese Pakete mit aus. Fehlt eines in den Hinweisen,
+    # verteilt das Release Fremdcode ohne Lizenzangabe. Geprueft wird die
+    # Tabellenzeile und nicht das blosse Vorkommen des Namens: "Pillow" steckt
+    # auch in "pillow-heif" und in jedem Link dorthin - der Test waere blind.
+    text = LIZENZHINWEISE.read_text(encoding="utf-8")
+    for name in _paketnamen(datei):
+        zeilen = _tabellenzeilen(text, name)
+        assert len(zeilen) >= 2, (
+            f"{name} braucht in {LIZENZHINWEISE.name} eine Tabellenzeile in "
+            f"beiden Sprachen (gefunden: {len(zeilen)}) - mit Lizenz und Quelle, "
+            "bei Binaerpaketen auch deren eingebaute Bibliotheken.")
+
+
+@pytest.mark.parametrize(
+    ("name", "lizenz"),
+    [("libheif", "LGPLv3"), ("libde265", "LGPLv3"), ("x265", "GPLv2")],
+)
+def test_lizenzhinweise_nennen_die_gpl_teile(name, lizenz):
+    # Diese drei Bibliotheken bringen LGPLv3 und GPLv2 in die EXE. Sie
+    # namentlich mit ihrer Lizenz zu nennen ist der Kern der Pflicht - dass die
+    # Namen irgendwo im Fliesstext auftauchen, genuegt dafuer nicht.
+    text = LIZENZHINWEISE.read_text(encoding="utf-8")
+    passend = [zeile for zeile in _tabellenzeilen(text, name) if lizenz in zeile]
+    assert len(passend) >= 2, (
+        f"{name} braucht in beiden Sprachen eine Tabellenzeile, die {lizenz} "
+        f"nennt (gefunden: {len(passend)}).")
+
+
+def _ohne_kommentare(text):
+    """YAML ohne Kommentarzeilen, Fortsetzungszeilen zusammengefuegt."""
+    text = re.sub(r"(?m)^\s*#.*$", "", text)
+    return text.replace("\\\n", " ")
+
+
+def test_lizenzhinweise_liegen_dem_release_bei():
+    # Im Repository zu stehen genuegt nicht: Wer nur die EXE herunterlaedt,
+    # muss die Lizenzen trotzdem bekommen. Ein Kommentar zaehlt nicht als
+    # Beleg, deshalb fliegen Kommentarzeilen vorher heraus.
+    yaml = _ohne_kommentare(RELEASE.read_text(encoding="utf-8"))
+    assert re.search(r"^\s*cp .*DRITTANBIETER-LIZENZEN\.md", yaml, re.MULTILINE), (
+        "Die Hinweise fehlen im Quellpaket.")
+    assert "Copy-Item DRITTANBIETER-LIZENZEN.md" in yaml, (
+        "Die Hinweise werden nicht neben die EXE gelegt.")
+    assert "dist/DRITTANBIETER-LIZENZEN.md" in yaml, (
+        "Die Hinweise werden nicht mit der EXE hochgeladen.")
+    assert "artefakte/windows-exe/DRITTANBIETER-LIZENZEN.md" in yaml, (
+        "Die Hinweise haengen nicht am Release.")
+
+
+def test_release_scheitert_wenn_eine_datei_fehlt():
+    # Beide Actions sind von Haus aus nachsichtig: upload-artifact warnt nur
+    # ("warn" ist die Vorgabe), und action-gh-release laesst Pfade durchgehen,
+    # die nichts treffen. Ohne diese zwei Zeilen entstuende ein Release ohne
+    # Pruefsumme oder ohne Lizenzhinweise, ohne dass etwas rot wird.
+    yaml = _ohne_kommentare(RELEASE.read_text(encoding="utf-8"))
+    assert len(re.findall(r"if-no-files-found:\s*error", yaml)) == 2, (
+        "Beide Upload-Schritte brauchen if-no-files-found: error.")
+    assert re.search(r"fail_on_unmatched_files:\s*true", yaml), (
+        "Der Release-Schritt braucht fail_on_unmatched_files: true.")

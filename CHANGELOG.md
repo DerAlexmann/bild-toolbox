@@ -9,6 +9,18 @@ die Versionsnummern folgen der [Semantischen Versionierung](https://semver.org/l
 
 <!-- Neue Einträge hier sammeln, bis die nächste Version getaggt wird. -->
 
+### Hinzugefügt
+
+- **Lizenzen der Fremdkomponenten.** Die Windows-EXE enthält Bibliotheken
+  anderer Projekte: Für HEIC und HEIF bringt `pillow-heif` unter anderem
+  `libheif` und `libde265` (LGPLv3) sowie den Encoder `x265` (GPLv2) mit, dazu
+  kommen Python, Tcl/Tk und die in Pillow eingebauten Bilddecoder. Die neue
+  Datei `DRITTANBIETER-LIZENZEN.md` führt alle Bestandteile mit Lizenz und
+  Quelle auf; sie liegt dem Quellpaket bei und hängt am Release neben der EXE.
+  Der Quellcode bleibt MIT – die EXE wird als Gesamtwerk unter den Bedingungen
+  der GPLv2 weitergegeben, weil `x265` sich nicht weglassen lässt, ohne das
+  Lesen von HEIC mitzunehmen.
+
 ## [1.1.0] – 2026-10-24
 
 ### Hinzugefügt
